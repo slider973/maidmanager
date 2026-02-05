@@ -41,3 +41,10 @@ src/
 Required in `.env.local`:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+
+## Active Technologies
+- TypeScript 5.9 with ES2022 targe + SolidJS 1.9, @solidjs/router 0.15, @supabase/supabase-js 2.95 (001-complete-auth)
+- Supabase (PostgreSQL with built-in auth tables) (001-complete-auth)
+
+## Recent Changes
+- 001-complete-auth: Added TypeScript 5.9 with ES2022 targe + SolidJS 1.9, @solidjs/router 0.15, @supabase/supabase-js 2.95

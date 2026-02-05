@@ -1,6 +1,8 @@
 import { createSignal, Show } from 'solid-js'
-import { useNavigate } from '@solidjs/router'
+import { useNavigate, A } from '@solidjs/router'
 import { useAuth } from '../lib/auth'
+import { SignupForm } from '../components/auth/SignupForm'
+import { LoadingButton } from '../components/ui/LoadingButton'
 
 export default function Login() {
   const [email, setEmail] = createSignal('')
@@ -9,25 +11,27 @@ export default function Login() {
   const [loading, setLoading] = createSignal(false)
   const [isSignUp, setIsSignUp] = createSignal(false)
 
-  const { signIn, signUp } = useAuth()
+  const { signIn } = useAuth()
   const navigate = useNavigate()
 
-  const handleSubmit = async (e: Event) => {
+  const handleLogin = async (e: Event) => {
     e.preventDefault()
     setError('')
     setLoading(true)
 
-    const { error } = isSignUp()
-      ? await signUp(email(), password())
-      : await signIn(email(), password())
+    const { error } = await signIn(email(), password())
 
     if (error) {
-      setError(error.message)
+      setError(error)
     } else {
       navigate('/', { replace: true })
     }
 
     setLoading(false)
+  }
+
+  const handleSignupSuccess = () => {
+    navigate('/', { replace: true })
   }
 
   return (
@@ -93,74 +97,79 @@ export default function Login() {
             </p>
           </div>
 
-          {/* Error Message */}
-          <Show when={error()}>
-            <div class="error-message">
-              <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              <span class="error-text">{error()}</span>
-            </div>
+          <Show when={isSignUp()}>
+            <SignupForm onSuccess={handleSignupSuccess} />
           </Show>
 
-          {/* Login Form */}
-          <form onSubmit={handleSubmit}>
-            <div class="form-group">
-              <label class="form-label" for="email">Adresse email</label>
-              <div class="input-wrapper">
-                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          <Show when={!isSignUp()}>
+            {/* Error Message */}
+            <Show when={error()}>
+              <div class="error-message">
+                <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
-                <input
-                  class="form-input"
-                  id="email"
-                  type="email"
-                  placeholder="votre@email.com"
-                  value={email()}
-                  onInput={(e) => setEmail(e.currentTarget.value)}
-                  required
-                  autocomplete="email"
-                />
+                <span class="error-text">{error()}</span>
               </div>
-            </div>
+            </Show>
 
-            <div class="form-group">
-              <label class="form-label" for="password">Mot de passe</label>
-              <div class="input-wrapper">
-                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0110 0v4" />
-                </svg>
-                <input
-                  class="form-input"
-                  id="password"
-                  type="password"
-                  placeholder="Entrez votre mot de passe"
-                  value={password()}
-                  onInput={(e) => setPassword(e.currentTarget.value)}
-                  required
-                  minLength={6}
-                  autocomplete={isSignUp() ? 'new-password' : 'current-password'}
-                />
+            {/* Login Form */}
+            <form onSubmit={handleLogin}>
+              <div class="form-group">
+                <label class="form-label" for="email">Adresse email</label>
+                <div class="input-wrapper">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  <input
+                    class="form-input"
+                    id="email"
+                    type="email"
+                    placeholder="votre@email.com"
+                    value={email()}
+                    onInput={(e) => setEmail(e.currentTarget.value)}
+                    required
+                    autocomplete="email"
+                  />
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              class={`btn btn-primary ${loading() ? 'btn-loading' : ''}`}
-              disabled={loading()}
-            >
-              <span>
-                {loading()
-                  ? 'Chargement...'
-                  : isSignUp()
-                    ? 'Créer le compte'
-                    : 'Se connecter'}
-              </span>
-            </button>
-          </form>
+              <div class="form-group">
+                <div class="form-label-row">
+                  <label class="form-label" for="password">Mot de passe</label>
+                  <A href="/forgot-password" class="form-label-link">
+                    Mot de passe oublié?
+                  </A>
+                </div>
+                <div class="input-wrapper">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                  </svg>
+                  <input
+                    class="form-input"
+                    id="password"
+                    type="password"
+                    placeholder="Entrez votre mot de passe"
+                    value={password()}
+                    onInput={(e) => setPassword(e.currentTarget.value)}
+                    required
+                    autocomplete="current-password"
+                  />
+                </div>
+              </div>
+
+              <LoadingButton
+                type="submit"
+                class="btn-primary"
+                loading={loading()}
+                loadingText="Connexion..."
+              >
+                Se connecter
+              </LoadingButton>
+            </form>
+          </Show>
 
           {/* Toggle Sign Up / Sign In */}
           <div class="form-footer">

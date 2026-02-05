@@ -44,7 +44,7 @@ export default function Home() {
               <span class="user-email">{user()?.email}</span>
             </div>
           </div>
-          <button class="btn btn-ghost" onClick={signOut}>
+          <button class="btn btn-ghost" onClick={() => signOut()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
               <polyline points="16,17 21,12 16,7" />
