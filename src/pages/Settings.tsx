@@ -1,5 +1,6 @@
 import { A } from '@solidjs/router'
 import { useAuth } from '../lib/auth'
+import { SessionList } from '../components/auth/SessionList'
 
 export default function Settings() {
   const { user } = useAuth()
@@ -62,18 +63,14 @@ export default function Settings() {
           </div>
         </section>
 
-        {/* Active Sessions Placeholder - P3 Feature */}
+        {/* Active Sessions */}
         <section class="settings-section">
           <div class="section-header">
             <h2 class="section-title">Sessions actives</h2>
           </div>
 
           <div class="settings-card">
-            <div class="empty-state" style={{ padding: 'var(--space-xl)' }}>
-              <p class="form-subtitle">
-                La gestion des sessions sera disponible prochainement.
-              </p>
-            </div>
+            <SessionList />
           </div>
         </section>
       </main>

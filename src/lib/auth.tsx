@@ -3,6 +3,7 @@ import type { ParentComponent, Accessor } from 'solid-js'
 import type { Session, User, AuthChangeEvent } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import * as authService from '../services/auth.service'
+import * as sessionService from '../services/session.service'
 
 type AuthContextType = {
   user: Accessor<User | null>
@@ -33,11 +34,20 @@ export const AuthProvider: ParentComponent = (props) => {
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setAuthEvent(event)
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
+
+      // Create session record on sign in
+      if (event === 'SIGNED_IN' && session?.user) {
+        try {
+          await sessionService.createSession(session.user.id)
+        } catch (err) {
+          console.error('Failed to create session record:', err)
+        }
+      }
     })
 
     onCleanup(() => subscription.unsubscribe())

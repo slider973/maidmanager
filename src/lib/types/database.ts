@@ -27,6 +27,7 @@ export interface Database {
           avatar_url?: string | null
           updated_at?: string
         }
+        Relationships: []
       }
       user_sessions: {
         Row: {
@@ -52,10 +53,38 @@ export interface Database {
           is_current?: boolean
         }
         Update: {
+          id?: string
+          user_id?: string
+          device_info?: string
+          browser?: string | null
+          os?: string | null
+          ip_address?: string | null
           last_active_at?: string
+          created_at?: string
           is_current?: boolean
         }
+        Relationships: [
+          {
+            foreignKeyName: "user_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
       }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
     }
   }
 }

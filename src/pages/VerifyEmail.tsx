@@ -126,6 +126,7 @@ export default function VerifyEmail() {
                       value={resendEmail()}
                       onInput={(e) => setResendEmail(e.currentTarget.value)}
                       required
+                      aria-label="Adresse email"
                     />
                   </div>
                   <LoadingButton
@@ -173,6 +174,7 @@ export default function VerifyEmail() {
                       value={resendEmail()}
                       onInput={(e) => setResendEmail(e.currentTarget.value)}
                       required
+                      aria-label="Adresse email"
                     />
                   </div>
                   <LoadingButton
