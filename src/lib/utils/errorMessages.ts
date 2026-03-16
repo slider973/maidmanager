@@ -1,6 +1,5 @@
 /**
- * French error message translations for Supabase Auth errors
- * Based on auth-api.md contract specifications
+ * French error message translations for auth errors
  */
 
 const errorMessages: Record<string, string> = {
@@ -43,7 +42,7 @@ const errorMessages: Record<string, string> = {
 }
 
 /**
- * Translates a Supabase Auth error message to French
+ * Translates an auth error message to French
  * @param error - The error object or message string
  * @returns French error message
  */

@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show, createEffect } from 'solid-js'
+import { createSignal, onMount, Show } from 'solid-js'
 import { useNavigate, A } from '@solidjs/router'
 import { useAuth } from '../lib/auth'
 import { LoadingButton } from '../components/ui/LoadingButton'
@@ -7,7 +7,7 @@ import { PASSWORD_MIN_LENGTH } from '../lib/utils/errorMessages'
 
 export default function ResetPassword() {
   const navigate = useNavigate()
-  const { updatePassword, authEvent, resetPassword } = useAuth()
+  const { updatePassword, resetPassword } = useAuth()
 
   const [password, setPassword] = createSignal('')
   const [confirmPassword, setConfirmPassword] = createSignal('')
@@ -15,27 +15,18 @@ export default function ResetPassword() {
   const [error, setError] = createSignal('')
   const [isRecoveryMode, setIsRecoveryMode] = createSignal(false)
   const [success, setSuccess] = createSignal(false)
-  const [expiredToken, setExpiredToken] = createSignal(false)
+  const [expiredToken] = createSignal(false)
   const [resendEmail, setResendEmail] = createSignal('')
   const [resendLoading, setResendLoading] = createSignal(false)
   const [resendSent, setResendSent] = createSignal(false)
 
-  // Check for PASSWORD_RECOVERY event
-  createEffect(() => {
-    if (authEvent() === 'PASSWORD_RECOVERY') {
-      setIsRecoveryMode(true)
-    }
-  })
-
   onMount(() => {
-    // Check if we have the recovery session
-    // The PASSWORD_RECOVERY event should fire from onAuthStateChange
-    const urlParams = new URLSearchParams(window.location.hash.substring(1))
-    const errorCode = urlParams.get('error_code')
+    // Check URL params for token
+    const urlParams = new URLSearchParams(window.location.search)
+    const token = urlParams.get('token')
 
-    if (errorCode === 'otp_expired') {
-      setExpiredToken(true)
-      showError('Le lien a expiré, veuillez en demander un nouveau')
+    if (token) {
+      setIsRecoveryMode(true)
     }
   })
 

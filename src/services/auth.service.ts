@@ -1,11 +1,19 @@
 /**
  * Authentication Service
- * Provides auth operations with French error translation and session helpers
+ * Provides auth operations against Laravel Sanctum API
  */
 
-import { supabase } from '../lib/supabase'
-import { translateError, validatePassword, validateEmail } from '../lib/utils/errorMessages'
-import type { User, Session } from '@supabase/supabase-js'
+import { api, ApiError } from '../lib/api'
+import { validatePassword, validateEmail } from '../lib/utils/errorMessages'
+
+export interface AuthUser {
+  id: number
+  name: string
+  email: string
+  email_verified_at: string | null
+  created_at: string
+  updated_at: string
+}
 
 export interface AuthResult<T = void> {
   data?: T
@@ -13,57 +21,73 @@ export interface AuthResult<T = void> {
 }
 
 export interface SignUpResult {
-  user: User | null
-  session: Session | null
+  user: AuthUser | null
   needsVerification: boolean
 }
 
+interface AuthResponse {
+  user: AuthUser
+  token: string
+}
+
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.errors) {
+      const firstError = Object.values(err.errors)[0]
+      if (firstError?.[0]) return translateValidationError(firstError[0])
+    }
+    return err.message
+  }
+  if (err instanceof Error && err.message === 'Failed to fetch') {
+    return 'Erreur de connexion, veuillez réessayer'
+  }
+  return 'Une erreur est survenue'
+}
+
+function translateValidationError(message: string): string {
+  const translations: Record<string, string> = {
+    'The email has already been taken.': 'Cet email est déjà utilisé',
+    'The email field must be a valid email address.': "Format d'email invalide",
+    'The password field must be at least 8 characters.': 'Le mot de passe doit contenir au moins 8 caractères',
+    'The password field confirmation does not match.': 'Les mots de passe ne correspondent pas',
+    'The name field is required.': 'Le nom est requis',
+  }
+  return translations[message] || message
+}
+
 /**
- * Sign up a new user with email and password
- * Optionally with an invitation token to link to a staff member
+ * Sign up a new user
  */
 export async function signUp(
   email: string,
   password: string,
-  invitationToken?: string
+  name?: string
 ): Promise<AuthResult<SignUpResult>> {
-  // Client-side validation
   const emailError = validateEmail(email)
-  if (emailError) {
-    return { error: emailError }
-  }
+  if (emailError) return { error: emailError }
 
   const passwordError = validatePassword(password)
-  if (passwordError) {
-    return { error: passwordError }
-  }
+  if (passwordError) return { error: passwordError }
 
-  // Build redirect URL with invitation token if provided
-  let redirectUrl = `${window.location.origin}/auth/verify`
-  if (invitationToken) {
-    redirectUrl += `?invite=${invitationToken}`
-  }
+  try {
+    const data = await api.post<AuthResponse>('/register', {
+      name: name || email.split('@')[0],
+      email,
+      password,
+      password_confirmation: password,
+    })
 
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: redirectUrl,
-      data: invitationToken ? { invitation_token: invitationToken } : undefined,
-    },
-  })
+    localStorage.setItem('auth_token', data.token)
 
-  if (error) {
-    return { error: translateError(error) }
-  }
-
-  return {
-    data: {
-      user: data.user,
-      session: data.session,
-      needsVerification: data.session === null,
-    },
-    error: null,
+    return {
+      data: {
+        user: data.user,
+        needsVerification: false,
+      },
+      error: null,
+    }
+  } catch (err) {
+    return { error: handleError(err) }
   }
 }
 
@@ -73,172 +97,123 @@ export async function signUp(
 export async function signIn(
   email: string,
   password: string
-): Promise<AuthResult<{ user: User; session: Session }>> {
-  // Client-side validation
+): Promise<AuthResult<{ user: AuthUser }>> {
   const emailError = validateEmail(email)
-  if (emailError) {
-    return { error: emailError }
-  }
+  if (emailError) return { error: emailError }
 
-  if (!password) {
-    return { error: 'Veuillez entrer votre mot de passe' }
-  }
+  if (!password) return { error: 'Veuillez entrer votre mot de passe' }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
+  try {
+    const data = await api.post<AuthResponse>('/login', { email, password })
 
-  if (error) {
-    return { error: translateError(error) }
-  }
+    localStorage.setItem('auth_token', data.token)
 
-  return {
-    data: { user: data.user, session: data.session },
-    error: null,
+    return {
+      data: { user: data.user },
+      error: null,
+    }
+  } catch (err) {
+    return { error: handleError(err) }
   }
 }
 
 /**
  * Sign out the current user
  */
-export async function signOut(scope: 'local' | 'global' | 'others' = 'local'): Promise<AuthResult> {
-  const { error } = await supabase.auth.signOut({ scope })
-
-  if (error) {
-    return { error: translateError(error) }
+export async function signOut(): Promise<AuthResult> {
+  try {
+    await api.post('/logout')
+  } catch {
+    // Ignore errors on logout
   }
 
+  localStorage.removeItem('auth_token')
   return { error: null }
 }
 
 /**
- * Request a password reset email
+ * Get current authenticated user
  */
-export async function resetPasswordForEmail(email: string): Promise<AuthResult> {
-  const emailError = validateEmail(email)
-  if (emailError) {
-    return { error: emailError }
+export async function getUser(): Promise<AuthResult<AuthUser | null>> {
+  const token = localStorage.getItem('auth_token')
+  if (!token) return { data: null, error: null }
+
+  try {
+    const user = await api.get<AuthUser>('/user')
+    return { data: user, error: null }
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      localStorage.removeItem('auth_token')
+      return { data: null, error: null }
+    }
+    return { error: handleError(err) }
   }
-
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/auth/reset-password`,
-  })
-
-  // Always return success to prevent email enumeration
-  if (error) {
-    console.error('Password reset error:', error)
-  }
-
-  return { error: null }
-}
-
-/**
- * Update the user's password
- */
-export async function updatePassword(newPassword: string): Promise<AuthResult> {
-  const passwordError = validatePassword(newPassword)
-  if (passwordError) {
-    return { error: passwordError }
-  }
-
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword,
-  })
-
-  if (error) {
-    return { error: translateError(error) }
-  }
-
-  return { error: null }
-}
-
-/**
- * Verify email using OTP token hash
- */
-export async function verifyEmail(
-  tokenHash: string,
-  type: 'email' | 'signup' = 'signup'
-): Promise<AuthResult<{ user: User; session: Session }>> {
-  const { data, error } = await supabase.auth.verifyOtp({
-    token_hash: tokenHash,
-    type,
-  })
-
-  if (error) {
-    return { error: translateError(error) }
-  }
-
-  return {
-    data: { user: data.user!, session: data.session! },
-    error: null,
-  }
-}
-
-/**
- * Resend verification email
- */
-export async function resendVerificationEmail(email: string): Promise<AuthResult> {
-  const emailError = validateEmail(email)
-  if (emailError) {
-    return { error: emailError }
-  }
-
-  const { error } = await supabase.auth.resend({
-    type: 'signup',
-    email,
-    options: {
-      emailRedirectTo: `${window.location.origin}/auth/verify`,
-    },
-  })
-
-  if (error) {
-    return { error: translateError(error) }
-  }
-
-  return { error: null }
-}
-
-/**
- * Get current session
- */
-export async function getSession(): Promise<AuthResult<Session | null>> {
-  const { data, error } = await supabase.auth.getSession()
-
-  if (error) {
-    return { error: translateError(error) }
-  }
-
-  return { data: data.session, error: null }
-}
-
-/**
- * Get current user (validates with server)
- */
-export async function getUser(): Promise<AuthResult<User | null>> {
-  const { data, error } = await supabase.auth.getUser()
-
-  if (error) {
-    return { error: translateError(error) }
-  }
-
-  return { data: data.user, error: null }
 }
 
 /**
  * Check if current user's email is verified
  */
-export function isEmailVerified(user: User | null): boolean {
-  return user?.email_confirmed_at !== null && user?.email_confirmed_at !== undefined
+export function isEmailVerified(user: AuthUser | null): boolean {
+  return user?.email_verified_at !== null && user?.email_verified_at !== undefined
 }
 
 /**
- * Subscribe to auth state changes
+ * Verify email using token
  */
-export function onAuthStateChange(
-  callback: (event: string, session: Session | null) => void
-) {
-  return supabase.auth.onAuthStateChange((event, session) => {
-    callback(event, session)
-  })
+export async function verifyEmail(
+  tokenHash: string,
+  _type: 'email' | 'signup' = 'signup'
+): Promise<AuthResult<{ user: AuthUser }>> {
+  try {
+    const data = await api.post<{ user: AuthUser }>('/verify-email', { token: tokenHash })
+    return { data, error: null }
+  } catch (err) {
+    return { error: handleError(err) }
+  }
+}
+
+/**
+ * Request a password reset email (placeholder - needs backend route)
+ */
+export async function resetPasswordForEmail(email: string): Promise<AuthResult> {
+  const emailError = validateEmail(email)
+  if (emailError) return { error: emailError }
+
+  try {
+    await api.post('/forgot-password', { email })
+    return { error: null }
+  } catch {
+    // Always return success to prevent email enumeration
+    return { error: null }
+  }
+}
+
+/**
+ * Update the user's password (placeholder - needs backend route)
+ */
+export async function updatePassword(newPassword: string): Promise<AuthResult> {
+  const passwordError = validatePassword(newPassword)
+  if (passwordError) return { error: passwordError }
+
+  try {
+    await api.put('/user/password', { password: newPassword, password_confirmation: newPassword })
+    return { error: null }
+  } catch (err) {
+    return { error: handleError(err) }
+  }
+}
+
+/**
+ * Resend verification email (placeholder - needs backend route)
+ */
+export async function resendVerificationEmail(email: string): Promise<AuthResult> {
+  const emailError = validateEmail(email)
+  if (emailError) return { error: emailError }
+
+  try {
+    await api.post('/email/verification-notification', { email })
+    return { error: null }
+  } catch (err) {
+    return { error: handleError(err) }
+  }
 }
