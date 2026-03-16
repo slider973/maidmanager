@@ -56,7 +56,7 @@ export default function Settings() {
             <div class="settings-item">
               <span class="settings-label">Email vérifié</span>
               <span class="settings-value">
-                {user()?.email_confirmed_at ? 'Oui' : 'Non'}
+                {user()?.email_verified_at ? 'Oui' : 'Non'}
               </span>
             </div>
           </div>

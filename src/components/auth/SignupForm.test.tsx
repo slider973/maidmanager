@@ -77,7 +77,7 @@ describe('SignupForm', () => {
 
     it('should accept valid email and password', async () => {
       vi.mocked(authService.signUp).mockResolvedValue({
-        data: { user: null, session: null, needsVerification: true },
+        data: { user: null, needsVerification: true },
         error: null,
       })
 
@@ -123,7 +123,7 @@ describe('SignupForm', () => {
   describe('Success flow', () => {
     it('should show verification message on successful signup', async () => {
       vi.mocked(authService.signUp).mockResolvedValue({
-        data: { user: null, session: null, needsVerification: true },
+        data: { user: null, needsVerification: true },
         error: null,
       })
 
@@ -146,7 +146,6 @@ describe('SignupForm', () => {
       vi.mocked(authService.signUp).mockResolvedValue({
         data: {
           user: { id: '123', email: 'test@example.com' } as any,
-          session: { access_token: 'token' } as any,
           needsVerification: false
         },
         error: null,

@@ -51,7 +51,7 @@ describe('VerifyEmail', () => {
 
     it('should show success message on valid token', async () => {
       vi.mocked(authService.verifyEmail).mockResolvedValue({
-        data: { user: { id: '123' } as any, session: { access_token: 'token' } as any },
+        data: { user: { id: '123' } as any,  },
         error: null,
       })
 
@@ -66,7 +66,7 @@ describe('VerifyEmail', () => {
       vi.useFakeTimers()
 
       vi.mocked(authService.verifyEmail).mockResolvedValue({
-        data: { user: { id: '123' } as any, session: { access_token: 'token' } as any },
+        data: { user: { id: '123' } as any,  },
         error: null,
       })
 

@@ -4,47 +4,69 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- `npm run dev` - Start development server (http://localhost:5173)
+### Frontend (root)
+- `npm run dev` - Start frontend dev server (http://localhost:5173)
 - `npm run build` - TypeScript check + production build
 - `npm run preview` - Preview production build
 
+### Backend (backend/)
+- `php artisan serve` - Start Laravel API server (http://localhost:8000)
+- `php artisan migrate` - Run database migrations
+- `php artisan route:list --path=api` - List API routes
+
 ## Tech Stack
 
-- **Framework**: SolidJS with TypeScript
-- **Build**: Vite
-- **Backend**: Supabase (auth + database)
-- **Routing**: @solidjs/router
+- **Frontend**: SolidJS with TypeScript, Vite, @solidjs/router
+- **Backend**: Laravel 12 with Sanctum (API token auth)
+- **Database**: SQLite (dev), Laravel Eloquent ORM
 
 ## Architecture
 
 ```
-src/
-├── lib/
-│   ├── supabase.ts      # Supabase client (uses VITE_SUPABASE_* env vars)
-│   └── auth.tsx         # AuthProvider context + useAuth hook
-├── components/
-│   └── ProtectedRoute.tsx  # Redirects to /login if not authenticated
-├── pages/
-│   ├── Login.tsx        # Login/signup form
-│   └── Home.tsx         # Protected home page
-└── App.tsx              # Router setup with AuthProvider wrapper
+├── src/                    # SolidJS Frontend
+│   ├── lib/
+│   │   ├── api.ts          # API client (fetch with Bearer token)
+│   │   └── auth.tsx        # AuthProvider context + useAuth hook
+│   ├── services/
+│   │   └── auth.service.ts # Auth operations (login, register, etc.)
+│   ├── components/
+│   │   └── ProtectedRoute.tsx
+│   ├── pages/
+│   └── App.tsx
+│
+├── backend/                # Laravel API
+│   ├── app/
+│   │   ├── Http/Controllers/AuthController.php
+│   │   └── Models/ (User, Profile)
+│   ├── routes/api.php      # API routes
+│   └── database/migrations/
 ```
+
+## API Routes
+
+- `POST /api/register` - Create account
+- `POST /api/login` - Login (returns token)
+- `POST /api/logout` - Logout (auth required)
+- `GET /api/user` - Get current user (auth required)
+- `PUT /api/user/password` - Update password (auth required)
+- `POST /api/forgot-password` - Request password reset
+- `POST /api/reset-password` - Reset password with token
 
 ## Auth Flow
 
-- `AuthProvider` wraps the entire app and manages auth state via Supabase
-- `useAuth()` provides: `user()`, `session()`, `loading()`, `signIn()`, `signUp()`, `signOut()`
-- Protected routes use `<ProtectedRoute>` component which redirects unauthenticated users
+- Frontend stores Sanctum token in `localStorage`
+- `AuthProvider` checks `/api/user` on mount to restore session
+- `useAuth()` provides: `user()`, `loading()`, `signIn()`, `signUp()`, `signOut()`
+- Protected routes use `<ProtectedRoute>` which redirects unauthenticated users
 
 ## Environment Variables
 
-Required in `.env.local`:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+Frontend `.env.local`:
+- `VITE_API_URL` - Laravel API URL (default: http://localhost:8000/api)
+
+Backend `backend/.env`:
+- `FRONTEND_URL` - Frontend URL for CORS (default: http://localhost:5173)
 
 ## Active Technologies
-- TypeScript 5.9 with ES2022 targe + SolidJS 1.9, @solidjs/router 0.15, @supabase/supabase-js 2.95 (001-complete-auth)
-- Supabase (PostgreSQL with built-in auth tables) (001-complete-auth)
-
-## Recent Changes
-- 001-complete-auth: Added TypeScript 5.9 with ES2022 targe + SolidJS 1.9, @solidjs/router 0.15, @supabase/supabase-js 2.95
+- TypeScript 5.9 + SolidJS 1.9, @solidjs/router 0.15
+- Laravel 12, Sanctum 4, SQLite
