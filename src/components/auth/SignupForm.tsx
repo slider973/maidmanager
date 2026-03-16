@@ -7,6 +7,10 @@ import { PASSWORD_MIN_LENGTH } from '../../lib/utils/errorMessages'
 interface SignupFormProps {
   onSuccess?: () => void
   onNeedsVerification?: (email: string) => void
+  /** Invitation token for staff account linking */
+  invitationToken?: string
+  /** Staff member name (for personalized message) */
+  staffName?: string
 }
 
 export const SignupForm: Component<SignupFormProps> = (props) => {
@@ -21,7 +25,7 @@ export const SignupForm: Component<SignupFormProps> = (props) => {
     setError('')
     setLoading(true)
 
-    const result = await authService.signUp(email(), password())
+    const result = await authService.signUp(email(), password(), props.invitationToken)
 
     if (result.error) {
       setError(result.error)
@@ -49,17 +53,38 @@ export const SignupForm: Component<SignupFormProps> = (props) => {
               <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
-          <h3 class="form-title">Vérifiez votre email</h3>
+          <h3 class="form-title">Verifiez votre email</h3>
           <p class="form-subtitle">
-            Nous avons envoyé un lien de confirmation à <strong>{email()}</strong>.
+            Nous avons envoye un lien de confirmation a <strong>{email()}</strong>.
             Cliquez sur le lien pour activer votre compte.
           </p>
           <p class="form-subtitle" style={{ "margin-top": "var(--space-sm)", "font-size": "0.85rem" }}>
-            N'oubliez pas de vérifier vos spams.
+            N'oubliez pas de verifier vos spams.
           </p>
         </div>
       }
     >
+      {/* Invitation Banner */}
+      <Show when={props.invitationToken && props.staffName}>
+        <div class="invitation-banner">
+          <div class="invitation-banner-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+              <circle cx="8.5" cy="7" r="4" />
+              <polyline points="17 11 19 13 23 9" />
+            </svg>
+          </div>
+          <div class="invitation-banner-content">
+            <p class="invitation-banner-title">
+              Bienvenue, {props.staffName}!
+            </p>
+            <p class="invitation-banner-text">
+              Creez votre compte pour acceder a votre espace personnel.
+            </p>
+          </div>
+        </div>
+      </Show>
+
       {/* Error Message */}
       <Show when={error()}>
         <div class="error-message">
@@ -103,7 +128,7 @@ export const SignupForm: Component<SignupFormProps> = (props) => {
               class="form-input"
               id="signup-password"
               type="password"
-              placeholder={`Minimum ${PASSWORD_MIN_LENGTH} caractères`}
+              placeholder={`Minimum ${PASSWORD_MIN_LENGTH} caracteres`}
               value={password()}
               onInput={(e) => setPassword(e.currentTarget.value)}
               required
@@ -117,9 +142,9 @@ export const SignupForm: Component<SignupFormProps> = (props) => {
           type="submit"
           class="btn-primary"
           loading={loading()}
-          loadingText="Création du compte..."
+          loadingText="Creation du compte..."
         >
-          Créer le compte
+          Creer le compte
         </LoadingButton>
       </form>
     </Show>

@@ -33,6 +33,13 @@ const errorMessages: Record<string, string> = {
   // Network/generic errors
   'Network error': 'Erreur de connexion, veuillez réessayer',
   'fetch failed': 'Erreur de connexion, veuillez réessayer',
+
+  // Staff member errors
+  'Staff member not found': 'Membre du personnel non trouvé',
+  'Failed to create staff member': 'Échec de la création du membre',
+  'Failed to update staff member': 'Échec de la mise à jour du membre',
+  'Failed to delete staff member': 'Échec de la suppression du membre',
+  'Failed to load staff members': 'Échec du chargement des membres',
 }
 
 /**
@@ -100,6 +107,46 @@ export function validateEmail(email: string): string | null {
   }
   if (!EMAIL_REGEX.test(email)) {
     return "Format d'email invalide"
+  }
+  return null
+}
+
+/**
+ * Validates optional email format (empty is valid)
+ * @param email - The email to validate
+ * @returns Error message in French or null if valid
+ */
+export function validateOptionalEmail(email: string | null | undefined): string | null {
+  if (!email || email.trim() === '') {
+    return null
+  }
+  if (!EMAIL_REGEX.test(email)) {
+    return "Format d'email invalide"
+  }
+  return null
+}
+
+/**
+ * Staff validation error messages
+ */
+export const staffValidationMessages = {
+  firstNameRequired: 'Le prénom est requis',
+  lastNameRequired: 'Le nom est requis',
+  positionRequired: 'Le poste est requis',
+  positionCustomRequired: 'Veuillez préciser le poste',
+  invalidEmail: "Format d'email invalide",
+  invalidDate: 'Date invalide',
+}
+
+/**
+ * Validates a required string field
+ * @param value - The value to validate
+ * @param fieldName - The field name for the error message
+ * @returns Error message in French or null if valid
+ */
+export function validateRequired(value: string | null | undefined, errorMessage: string): string | null {
+  if (!value || value.trim() === '') {
+    return errorMessage
   }
   return null
 }

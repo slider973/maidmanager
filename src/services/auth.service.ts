@@ -20,10 +20,12 @@ export interface SignUpResult {
 
 /**
  * Sign up a new user with email and password
+ * Optionally with an invitation token to link to a staff member
  */
 export async function signUp(
   email: string,
-  password: string
+  password: string,
+  invitationToken?: string
 ): Promise<AuthResult<SignUpResult>> {
   // Client-side validation
   const emailError = validateEmail(email)
@@ -36,11 +38,18 @@ export async function signUp(
     return { error: passwordError }
   }
 
+  // Build redirect URL with invitation token if provided
+  let redirectUrl = `${window.location.origin}/auth/verify`
+  if (invitationToken) {
+    redirectUrl += `?invite=${invitationToken}`
+  }
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: `${window.location.origin}/auth/verify`,
+      emailRedirectTo: redirectUrl,
+      data: invitationToken ? { invitation_token: invitationToken } : undefined,
     },
   })
 
