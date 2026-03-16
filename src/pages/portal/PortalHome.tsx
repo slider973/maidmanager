@@ -8,7 +8,7 @@ import { createResource, createEffect, onCleanup, Show } from 'solid-js'
 import type { Component } from 'solid-js'
 import { A } from '@solidjs/router'
 import { useAuth } from '../../lib/auth'
-import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import { timeEntryStore } from '../../stores/timeEntryStore'
 import { roomActionStore } from '../../stores/roomActionStore'
 import { TimeEntryCard } from '../../components/portal/TimeEntryCard'
@@ -26,18 +26,13 @@ interface StaffMemberInfo {
 const fetchStaffMember = async (staffMemberId: string | null): Promise<StaffMemberInfo | null> => {
   if (!staffMemberId) return null
 
-  const { data, error } = await supabase
-    .from('staff_members')
-    .select('id, first_name, last_name, position')
-    .eq('id', staffMemberId)
-    .single()
-
-  if (error) {
+  try {
+    const data = await api.get<StaffMemberInfo>(`/staff-members/${staffMemberId}`)
+    return data
+  } catch (error) {
     console.error('Failed to fetch staff member:', error)
     return null
   }
-
-  return data as StaffMemberInfo
 }
 
 const PortalHome: Component = () => {

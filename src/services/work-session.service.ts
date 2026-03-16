@@ -3,7 +3,7 @@
  * Provides CRUD operations for work sessions (prestations)
  */
 
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import type {
   WorkSession,
   WorkSessionWithStaff,
@@ -20,6 +20,12 @@ export interface ServiceResult<T = void> {
 export interface ValidationResult {
   error: string | null
   warning: string | null
+}
+
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
 }
 
 /**
@@ -63,7 +69,6 @@ export function validateWorkSession(data: WorkSessionInsert): ValidationResult {
   }
 
   // Date validation: cannot be in the future
-  // Parse dates as YYYY-MM-DD strings to avoid timezone issues
   const sessionDateStr = data.session_date
   const todayStr = new Date().toISOString().split('T')[0]
   if (sessionDateStr > todayStr) {
@@ -117,37 +122,19 @@ export function validateWorkSessionUpdate(data: WorkSessionUpdate): ValidationRe
 export async function getWorkSessions(
   filters?: WorkSessionFilters
 ): Promise<ServiceResult<WorkSessionWithStaff[]>> {
-  let query = supabase
-    .from('work_sessions')
-    .select(`
-      *,
-      staff_member:staff_members(
-        id,
-        first_name,
-        last_name,
-        position
-      )
-    `)
+  try {
+    const params = new URLSearchParams()
+    if (filters?.staffMemberId) params.set('staff_member_id', filters.staffMemberId)
+    if (filters?.startDate) params.set('start_date', filters.startDate)
+    if (filters?.endDate) params.set('end_date', filters.endDate)
 
-  // Apply filters
-  if (filters?.staffMemberId) {
-    query = query.eq('staff_member_id', filters.staffMemberId)
+    const query = params.toString()
+    const data = await api.get<WorkSessionWithStaff[]>(`/work-sessions${query ? `?${query}` : ''}`)
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to get work sessions:', err)
+    return { data: [], error: handleError(err) }
   }
-  if (filters?.startDate) {
-    query = query.gte('session_date', filters.startDate)
-  }
-  if (filters?.endDate) {
-    query = query.lte('session_date', filters.endDate)
-  }
-
-  const { data, error } = await query.order('session_date', { ascending: false })
-
-  if (error) {
-    console.error('Failed to get work sessions:', error)
-    return { data: [], error: 'Échec du chargement des prestations' }
-  }
-
-  return { data: data || [], error: null }
 }
 
 /**
@@ -156,26 +143,13 @@ export async function getWorkSessions(
 export async function getWorkSessionsByStaffMember(
   staffMemberId: string
 ): Promise<ServiceResult<WorkSessionWithStaff[]>> {
-  const { data, error } = await supabase
-    .from('work_sessions')
-    .select(`
-      *,
-      staff_member:staff_members(
-        id,
-        first_name,
-        last_name,
-        position
-      )
-    `)
-    .eq('staff_member_id', staffMemberId)
-    .order('session_date', { ascending: false })
-
-  if (error) {
-    console.error('Failed to get work sessions for staff member:', error)
-    return { data: [], error: 'Échec du chargement des prestations' }
+  try {
+    const data = await api.get<WorkSessionWithStaff[]>(`/work-sessions?staff_member_id=${staffMemberId}`)
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to get work sessions for staff member:', err)
+    return { data: [], error: handleError(err) }
   }
-
-  return { data: data || [], error: null }
 }
 
 /**
@@ -184,26 +158,13 @@ export async function getWorkSessionsByStaffMember(
 export async function getWorkSession(
   id: string
 ): Promise<ServiceResult<WorkSessionWithStaff>> {
-  const { data, error } = await supabase
-    .from('work_sessions')
-    .select(`
-      *,
-      staff_member:staff_members(
-        id,
-        first_name,
-        last_name,
-        position
-      )
-    `)
-    .eq('id', id)
-    .single()
-
-  if (error) {
-    console.error('Failed to get work session:', error)
-    return { error: 'Prestation non trouvée' }
+  try {
+    const data = await api.get<WorkSessionWithStaff>(`/work-sessions/${id}`)
+    return { data, error: null }
+  } catch (err) {
+    console.error('Failed to get work session:', err)
+    return { error: handleError(err) }
   }
-
-  return { data, error: null }
 }
 
 /**
@@ -218,24 +179,13 @@ export async function createWorkSession(
     return { error: validation.error }
   }
 
-  // Get current user ID for RLS
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: 'Non authentifié' }
+  try {
+    const session = await api.post<WorkSession>('/work-sessions', data)
+    return { data: session, error: null }
+  } catch (err) {
+    console.error('Failed to create work session:', err)
+    return { error: handleError(err) }
   }
-
-  const { data: session, error } = await supabase
-    .from('work_sessions')
-    .insert({ ...data, user_id: user.id })
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to create work session:', error)
-    return { error: 'Échec de la création de la prestation' }
-  }
-
-  return { data: session, error: null }
 }
 
 /**
@@ -251,33 +201,26 @@ export async function updateWorkSession(
     return { error: validation.error }
   }
 
-  const { data: session, error } = await supabase
-    .from('work_sessions')
-    .update(data)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to update work session:', error)
-    return { error: 'Échec de la mise à jour de la prestation' }
+  try {
+    const session = await api.put<WorkSession>(`/work-sessions/${id}`, data)
+    return { data: session, error: null }
+  } catch (err) {
+    console.error('Failed to update work session:', err)
+    return { error: handleError(err) }
   }
-
-  return { data: session, error: null }
 }
 
 /**
  * Delete a work session
  */
 export async function deleteWorkSession(id: string): Promise<ServiceResult> {
-  const { error } = await supabase.from('work_sessions').delete().eq('id', id)
-
-  if (error) {
-    console.error('Failed to delete work session:', error)
-    return { error: 'Échec de la suppression de la prestation' }
+  try {
+    await api.delete(`/work-sessions/${id}`)
+    return { error: null }
+  } catch (err) {
+    console.error('Failed to delete work session:', err)
+    return { error: handleError(err) }
   }
-
-  return { error: null }
 }
 
 /**
@@ -287,16 +230,11 @@ export async function deleteWorkSession(id: string): Promise<ServiceResult> {
 export async function getTotalWorkForStaffMember(
   staffMemberId: string
 ): Promise<ServiceResult<number>> {
-  const { data, error } = await supabase
-    .from('work_sessions')
-    .select('amount_cents')
-    .eq('staff_member_id', staffMemberId)
-
-  if (error) {
-    console.error('Failed to get total work for staff member:', error)
-    return { data: 0, error: 'Échec du calcul du total' }
+  try {
+    const result = await api.get<{ total_cents: number }>(`/work-sessions/total?staff_member_id=${staffMemberId}`)
+    return { data: result.total_cents, error: null }
+  } catch (err) {
+    console.error('Failed to get total work for staff member:', err)
+    return { data: 0, error: handleError(err) }
   }
-
-  const total = (data || []).reduce((sum, session) => sum + session.amount_cents, 0)
-  return { data: total, error: null }
 }

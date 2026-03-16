@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   createScheduleEntry,
   getScheduleEntries,
@@ -69,30 +69,18 @@ describe('getScheduleEntries', () => {
   ]
 
   it('should return all schedule entries for the user', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: mockEntries, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockEntries)
 
     const result = await getScheduleEntries()
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(2)
     expect(result.data).toEqual(mockEntries)
-    expect(supabase.from).toHaveBeenCalledWith('schedule_entries')
+    expect(api.get).toHaveBeenCalledWith('/schedule-entries')
   })
 
   it('should return empty array when no entries', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getScheduleEntries()
 
@@ -103,24 +91,13 @@ describe('getScheduleEntries', () => {
   it('should filter by staffMemberId when provided', async () => {
     const filteredEntries = [mockEntries[0]]
 
-    const mockOrder = vi.fn().mockReturnValue({
-      order: vi.fn().mockResolvedValue({ data: filteredEntries, error: null }),
-    })
-    const mockEq = vi.fn().mockReturnValue({
-      order: mockOrder,
-    })
-    const mockSelect = vi.fn().mockReturnValue({
-      eq: mockEq,
-    })
-
-    vi.mocked(supabase.from).mockReturnValue({
-      select: mockSelect,
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(filteredEntries)
 
     const result = await getScheduleEntries({ filters: { staffMemberId: 'staff-1' } })
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(filteredEntries)
+    expect(api.get).toHaveBeenCalledWith('/schedule-entries?staff_member_id=staff-1')
   })
 
   it('should filter by status when provided', async () => {
@@ -129,41 +106,21 @@ describe('getScheduleEntries', () => {
       status: 'completed',
     }
 
-    const mockOrder = vi.fn().mockReturnValue({
-      order: vi.fn().mockResolvedValue({ data: [completedEntry], error: null }),
-    })
-    const mockEq = vi.fn().mockReturnValue({
-      order: mockOrder,
-    })
-    const mockSelect = vi.fn().mockReturnValue({
-      eq: mockEq,
-    })
-
-    vi.mocked(supabase.from).mockReturnValue({
-      select: mockSelect,
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([completedEntry])
 
     const result = await getScheduleEntries({ filters: { status: 'completed' } })
 
     expect(result.error).toBeNull()
     expect(result.data?.[0]?.status).toBe('completed')
+    expect(api.get).toHaveBeenCalledWith('/schedule-entries?status=completed')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Database error' },
-          }),
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await getScheduleEntries()
 
-    expect(result.error).toBe('Échec du chargement des interventions')
+    expect(result.error).toBe('Database error')
     expect(result.data).toEqual([])
   })
 })
@@ -188,19 +145,13 @@ describe('createScheduleEntry', () => {
       updated_at: '2026-02-06T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockEntry, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockEntry)
 
     const result = await createScheduleEntry(validData)
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockEntry)
-    expect(supabase.from).toHaveBeenCalledWith('schedule_entries')
+    expect(api.post).toHaveBeenCalledWith('/schedule-entries', validData)
   })
 
   it('should return validation error when staff_member_id is missing', async () => {
@@ -208,7 +159,7 @@ describe('createScheduleEntry', () => {
 
     const result = await createScheduleEntry(invalidData)
 
-    expect(result.error).toBe('Veuillez sélectionner un membre du personnel')
+    expect(result.error).toBe('Veuillez selectionner un membre du personnel')
     expect(result.data).toBeUndefined()
   })
 
@@ -226,17 +177,28 @@ describe('createScheduleEntry', () => {
 
     const result = await createScheduleEntry(invalidData)
 
-    expect(result.error).toBe("L'heure de début est requise")
+    expect(result.error).toBe("L'heure de debut est requise")
     expect(result.data).toBeUndefined()
   })
 
-  it('should return validation error when description is missing', async () => {
-    const invalidData = { ...validData, description: '' }
+  it('should allow empty description (description not required)', async () => {
+    const dataWithEmptyDesc = { ...validData, description: '' }
+    const mockEntry = {
+      id: 'entry-1',
+      user_id: 'test-user-id',
+      ...dataWithEmptyDesc,
+      end_time: null,
+      status: 'scheduled',
+      notes: null,
+      created_at: '2026-02-06T00:00:00Z',
+      updated_at: '2026-02-06T00:00:00Z',
+    }
 
-    const result = await createScheduleEntry(invalidData)
+    vi.mocked(api.post).mockResolvedValue(mockEntry)
 
-    expect(result.error).toBe('La description est requise')
-    expect(result.data).toBeUndefined()
+    const result = await createScheduleEntry(dataWithEmptyDesc)
+
+    expect(result.error).toBeNull()
   })
 
   it('should return validation error when description is too long', async () => {
@@ -244,7 +206,7 @@ describe('createScheduleEntry', () => {
 
     const result = await createScheduleEntry(invalidData)
 
-    expect(result.error).toBe('Description trop longue (max 500 caractères)')
+    expect(result.error).toBe('Description trop longue (max 500 caracteres)')
     expect(result.data).toBeUndefined()
   })
 
@@ -253,7 +215,7 @@ describe('createScheduleEntry', () => {
 
     const result = await createScheduleEntry(invalidData)
 
-    expect(result.error).toBe("L'heure de fin doit être après l'heure de début")
+    expect(result.error).toBe("L'heure de fin doit etre apres l'heure de debut")
     expect(result.data).toBeUndefined()
   })
 
@@ -269,13 +231,7 @@ describe('createScheduleEntry', () => {
       updated_at: '2026-02-06T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockEntry, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockEntry)
 
     const result = await createScheduleEntry(dataWithEndTime)
 
@@ -283,21 +239,12 @@ describe('createScheduleEntry', () => {
     expect(result.data?.end_time).toBe('12:00')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Database error' },
-          }),
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await createScheduleEntry(validData)
 
-    expect(result.error).toBe("Échec de la création de l'intervention")
+    expect(result.error).toBe('Database error')
     expect(result.data).toBeUndefined()
   })
 })
@@ -316,7 +263,7 @@ describe('validateScheduleEntry', () => {
 
   it('should return error for empty staff_member_id', () => {
     const data = { ...validData, staff_member_id: '' }
-    expect(validateScheduleEntry(data)).toBe('Veuillez sélectionner un membre du personnel')
+    expect(validateScheduleEntry(data)).toBe('Veuillez selectionner un membre du personnel')
   })
 
   it('should return error for empty scheduled_date', () => {
@@ -326,22 +273,22 @@ describe('validateScheduleEntry', () => {
 
   it('should return error for empty start_time', () => {
     const data = { ...validData, start_time: '' }
-    expect(validateScheduleEntry(data)).toBe("L'heure de début est requise")
+    expect(validateScheduleEntry(data)).toBe("L'heure de debut est requise")
   })
 
-  it('should return error for empty description', () => {
+  it('should pass with empty description (description not required)', () => {
     const data = { ...validData, description: '' }
-    expect(validateScheduleEntry(data)).toBe('La description est requise')
+    expect(validateScheduleEntry(data)).toBeNull()
   })
 
   it('should return error for description over 500 characters', () => {
     const data = { ...validData, description: 'a'.repeat(501) }
-    expect(validateScheduleEntry(data)).toBe('Description trop longue (max 500 caractères)')
+    expect(validateScheduleEntry(data)).toBe('Description trop longue (max 500 caracteres)')
   })
 
   it('should return error when end_time is before start_time', () => {
     const data = { ...validData, start_time: '14:00', end_time: '10:00' }
-    expect(validateScheduleEntry(data)).toBe("L'heure de fin doit être après l'heure de début")
+    expect(validateScheduleEntry(data)).toBe("L'heure de fin doit etre apres l'heure de debut")
   })
 
   it('should pass when end_time is after start_time', () => {
@@ -377,127 +324,92 @@ describe('updateScheduleEntry', () => {
   }
 
   it('should update a schedule entry', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockEntry, error: null }),
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(mockEntry)
 
     const result = await updateScheduleEntry('entry-1', { description: 'Updated description' })
 
     expect(result.error).toBeNull()
     expect(result.data?.description).toBe('Updated description')
+    expect(api.put).toHaveBeenCalledWith('/schedule-entries/entry-1', { description: 'Updated description' })
   })
 
-  it('should return validation error when description is empty', async () => {
+  it('should allow empty description in update (only validates length)', async () => {
+    vi.mocked(api.put).mockResolvedValue({
+      ...mockEntry,
+      description: '',
+    })
+
     const result = await updateScheduleEntry('entry-1', { description: '' })
 
-    expect(result.error).toBe('La description est requise')
-    expect(result.data).toBeUndefined()
+    expect(result.error).toBeNull()
+    expect(api.put).toHaveBeenCalledWith('/schedule-entries/entry-1', { description: '' })
   })
 
   it('should return validation error when description is too long', async () => {
     const result = await updateScheduleEntry('entry-1', { description: 'a'.repeat(501) })
 
-    expect(result.error).toBe('Description trop longue (max 500 caractères)')
+    expect(result.error).toBe('Description trop longue (max 500 caracteres)')
     expect(result.data).toBeUndefined()
   })
 
   it('should return validation error when end_time is before start_time', async () => {
     const result = await updateScheduleEntry('entry-1', { start_time: '14:00', end_time: '10:00' })
 
-    expect(result.error).toBe("L'heure de fin doit être après l'heure de début")
+    expect(result.error).toBe("L'heure de fin doit etre apres l'heure de debut")
     expect(result.data).toBeUndefined()
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: null,
-              error: { message: 'Database error' },
-            }),
-          }),
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.put).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await updateScheduleEntry('entry-1', { description: 'Test' })
 
-    expect(result.error).toBe("Échec de la modification de l'intervention")
+    expect(result.error).toBe('Database error')
   })
 })
 
 describe('deleteScheduleEntry', () => {
   it('should delete a schedule entry', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.delete).mockResolvedValue(undefined)
 
     const result = await deleteScheduleEntry('entry-1')
 
     expect(result.error).toBeNull()
+    expect(api.delete).toHaveBeenCalledWith('/schedule-entries/entry-1')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.delete).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await deleteScheduleEntry('entry-1')
 
-    expect(result.error).toBe("Échec de la suppression de l'intervention")
+    expect(result.error).toBe('Database error')
   })
 })
 
 describe('updateScheduleStatus', () => {
   it('should update status to completed', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(undefined)
 
     const result = await updateScheduleStatus('entry-1', 'completed')
 
     expect(result.error).toBeNull()
+    expect(api.put).toHaveBeenCalledWith('/schedule-entries/entry-1', { status: 'completed' })
   })
 
   it('should update status to cancelled', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(undefined)
 
     const result = await updateScheduleStatus('entry-1', 'cancelled')
 
     expect(result.error).toBeNull()
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.put).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await updateScheduleStatus('entry-1', 'completed')
 
-    expect(result.error).toBe("Échec de la modification de l'intervention")
+    expect(result.error).toBe('Database error')
   })
 })

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   createStaffMember,
   getStaffMembers,
@@ -40,19 +40,13 @@ describe('createStaffMember', () => {
       updated_at: '2026-02-06T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockStaff, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockStaff)
 
     const result = await createStaffMember(validData)
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockStaff)
-    expect(supabase.from).toHaveBeenCalledWith('staff_members')
+    expect(api.post).toHaveBeenCalledWith('/staff-members', validData)
   })
 
   it('should return validation error when first_name is missing', async () => {
@@ -109,13 +103,7 @@ describe('createStaffMember', () => {
       updated_at: '2026-02-06T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockStaff, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockStaff)
 
     const result = await createStaffMember(dataWithEmail)
 
@@ -123,21 +111,12 @@ describe('createStaffMember', () => {
     expect(result.data?.email).toBe('jean@example.com')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Database error' },
-          }),
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await createStaffMember(validData)
 
-    expect(result.error).toBe('Échec de la création du membre')
+    expect(result.error).toBe('Database error')
     expect(result.data).toBeUndefined()
   })
 })
@@ -177,11 +156,7 @@ describe('getStaffMembers', () => {
       },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: mockStaff, error: null }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockStaff)
 
     const result = await getStaffMembers()
 
@@ -191,11 +166,7 @@ describe('getStaffMembers', () => {
   })
 
   it('should return empty array when no staff members', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: [], error: null }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getStaffMembers()
 
@@ -222,35 +193,21 @@ describe('getStaffMembers', () => {
       },
     ]
 
-    const mockSelect = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: mockActiveStaff, error: null }),
-      }),
-    })
-
-    vi.mocked(supabase.from).mockReturnValue({
-      select: mockSelect,
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockActiveStaff)
 
     const result = await getStaffMembers({ isActive: true })
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockActiveStaff)
+    expect(api.get).toHaveBeenCalledWith('/staff-members?is_active=true')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({
-          data: null,
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await getStaffMembers()
 
-    expect(result.error).toBe('Échec du chargement des membres')
+    expect(result.error).toBe('Database error')
     expect(result.data).toEqual([])
   })
 })
@@ -273,31 +230,17 @@ describe('getStaffMember', () => {
       updated_at: '2026-02-06T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockStaff, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockStaff)
 
     const result = await getStaffMember('staff-1')
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockStaff)
+    expect(api.get).toHaveBeenCalledWith('/staff-members/staff-1')
   })
 
   it('should return error when staff member not found', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Not found' },
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Membre du personnel non trouvé', 404))
 
     const result = await getStaffMember('non-existent-id')
 

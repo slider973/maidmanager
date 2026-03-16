@@ -48,7 +48,7 @@ export const SessionList: Component = () => {
       showError(error)
     } else {
       // Also sign out other Supabase sessions
-      await signOut('others')
+      await signOut()
       showSuccess('Tous les autres appareils ont été déconnectés')
       refetch()
     }

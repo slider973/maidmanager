@@ -3,7 +3,7 @@
  * CRUD operations for staff payments
  */
 
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import type {
   StaffPayment,
   StaffPaymentWithStaff,
@@ -14,6 +14,12 @@ import type {
 export interface ServiceResult<T = void> {
   data?: T
   error: string | null
+}
+
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
 }
 
 /**
@@ -44,23 +50,11 @@ function validatePayment(
  */
 export async function getStaffPayments(): Promise<ServiceResult<StaffPaymentWithStaff[]>> {
   try {
-    const { data, error } = await supabase
-      .from('staff_payments')
-      .select(`
-        *,
-        staff_member:staff_members(id, first_name, last_name, position)
-      `)
-      .order('payment_date', { ascending: false })
-
-    if (error) {
-      console.error('Failed to get payments:', error)
-      return { data: [], error: 'Échec du chargement des paiements' }
-    }
-
+    const data = await api.get<StaffPaymentWithStaff[]>('/staff-payments')
     return { data: data || [], error: null }
   } catch (err) {
     console.error('Error getting payments:', err)
-    return { data: [], error: 'Erreur lors du chargement des paiements' }
+    return { data: [], error: handleError(err) }
   }
 }
 
@@ -71,21 +65,11 @@ export async function getStaffPaymentsByStaffMember(
   staffMemberId: string
 ): Promise<ServiceResult<StaffPayment[]>> {
   try {
-    const { data, error } = await supabase
-      .from('staff_payments')
-      .select('*')
-      .eq('staff_member_id', staffMemberId)
-      .order('payment_date', { ascending: false })
-
-    if (error) {
-      console.error('Failed to get payments for staff member:', error)
-      return { data: [], error: 'Échec du chargement des paiements' }
-    }
-
+    const data = await api.get<StaffPayment[]>(`/staff-payments?staff_member_id=${staffMemberId}`)
     return { data: data || [], error: null }
   } catch (err) {
     console.error('Error getting payments for staff member:', err)
-    return { data: [], error: 'Erreur lors du chargement des paiements' }
+    return { data: [], error: handleError(err) }
   }
 }
 
@@ -101,28 +85,12 @@ export async function createStaffPayment(
     return { error: validation.error }
   }
 
-  // Get current user ID for RLS
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: 'Non authentifié' }
-  }
-
   try {
-    const { data: created, error } = await supabase
-      .from('staff_payments')
-      .insert({ ...data, user_id: user.id })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Failed to create payment:', error)
-      return { error: 'Échec de la création du paiement' }
-    }
-
+    const created = await api.post<StaffPayment>('/staff-payments', data)
     return { data: created, error: null }
   } catch (err) {
     console.error('Error creating payment:', err)
-    return { error: 'Erreur lors de la création du paiement' }
+    return { error: handleError(err) }
   }
 }
 
@@ -140,22 +108,11 @@ export async function updateStaffPayment(
   }
 
   try {
-    const { data: updated, error } = await supabase
-      .from('staff_payments')
-      .update(data)
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Failed to update payment:', error)
-      return { error: 'Échec de la mise à jour du paiement' }
-    }
-
+    const updated = await api.put<StaffPayment>(`/staff-payments/${id}`, data)
     return { data: updated, error: null }
   } catch (err) {
     console.error('Error updating payment:', err)
-    return { error: 'Erreur lors de la mise à jour du paiement' }
+    return { error: handleError(err) }
   }
 }
 
@@ -164,19 +121,10 @@ export async function updateStaffPayment(
  */
 export async function deleteStaffPayment(id: string): Promise<ServiceResult> {
   try {
-    const { error } = await supabase
-      .from('staff_payments')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      console.error('Failed to delete payment:', error)
-      return { error: 'Échec de la suppression du paiement' }
-    }
-
+    await api.delete(`/staff-payments/${id}`)
     return { error: null }
   } catch (err) {
     console.error('Error deleting payment:', err)
-    return { error: 'Erreur lors de la suppression du paiement' }
+    return { error: handleError(err) }
   }
 }

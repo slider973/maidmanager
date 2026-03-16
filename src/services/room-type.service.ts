@@ -4,7 +4,7 @@
  * System defaults have user_id = NULL, custom types have user_id = current user
  */
 
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 
 export interface RoomType {
   id: string
@@ -29,39 +29,36 @@ export interface ServiceResult<T = void> {
   error: string | null
 }
 
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
+}
+
 /**
  * Get all room types (system defaults + user custom)
  */
 export async function getAllRoomTypes(): Promise<ServiceResult<RoomType[]>> {
-  const { data, error } = await supabase
-    .from('room_types')
-    .select('*')
-    .order('sort_order', { ascending: true })
-
-  if (error) {
-    console.error('Failed to get room types:', error)
-    return { data: [], error: 'Erreur lors du chargement des types de pieces' }
+  try {
+    const data = await api.get<RoomType[]>('/room-types')
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to get room types:', err)
+    return { data: [], error: handleError(err) }
   }
-
-  return { data: (data || []) as RoomType[], error: null }
 }
 
 /**
  * Get only active room types
  */
 export async function getActiveRoomTypes(): Promise<ServiceResult<RoomType[]>> {
-  const { data, error } = await supabase
-    .from('room_types')
-    .select('*')
-    .eq('is_active', true)
-    .order('sort_order', { ascending: true })
-
-  if (error) {
-    console.error('Failed to get active room types:', error)
-    return { data: [], error: 'Erreur lors du chargement des types de pieces' }
+  try {
+    const data = await api.get<RoomType[]>('/room-types?is_active=true')
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to get active room types:', err)
+    return { data: [], error: handleError(err) }
   }
-
-  return { data: (data || []) as RoomType[], error: null }
 }
 
 /**
@@ -72,39 +69,18 @@ export async function createRoomType(data: RoomTypeInsert): Promise<ServiceResul
     return { error: 'Le nom est requis' }
   }
 
-  // Get current user
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: 'Non authentifie' }
-  }
-
-  // Generate slug from French name
-  const slug = data.name || data.name_fr
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '')
-
-  const { data: result, error } = await supabase
-    .from('room_types')
-    .insert({
-      user_id: user.id,
-      name: slug,
+  try {
+    const result = await api.post<RoomType>('/room-types', {
       name_fr: data.name_fr.trim(),
+      name: data.name,
       icon: data.icon || 'home',
       sort_order: data.sort_order || 50,
-      is_active: true,
     })
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to create room type:', error)
-    return { error: 'Erreur lors de la creation' }
+    return { data: result, error: null }
+  } catch (err) {
+    console.error('Failed to create room type:', err)
+    return { error: handleError(err) }
   }
-
-  return { data: result as RoomType, error: null }
 }
 
 /**
@@ -114,47 +90,32 @@ export async function updateRoomType(
   id: string,
   data: Partial<RoomTypeInsert> & { is_active?: boolean }
 ): Promise<ServiceResult<RoomType>> {
-  const { data: result, error } = await supabase
-    .from('room_types')
-    .update({
-      ...(data.name_fr && { name_fr: data.name_fr.trim() }),
-      ...(data.icon !== undefined && { icon: data.icon }),
-      ...(data.sort_order !== undefined && { sort_order: data.sort_order }),
-      ...(data.is_active !== undefined && { is_active: data.is_active }),
-    })
-    .eq('id', id)
-    .select()
-    .single()
+  try {
+    const updateData: Record<string, unknown> = {}
+    if (data.name_fr) updateData.name_fr = data.name_fr.trim()
+    if (data.icon !== undefined) updateData.icon = data.icon
+    if (data.sort_order !== undefined) updateData.sort_order = data.sort_order
+    if (data.is_active !== undefined) updateData.is_active = data.is_active
 
-  if (error) {
-    console.error('Failed to update room type:', error)
-    if (error.code === '42501') {
-      return { error: 'Vous ne pouvez pas modifier les types par defaut' }
-    }
-    return { error: 'Erreur lors de la mise a jour' }
+    const result = await api.put<RoomType>(`/room-types/${id}`, updateData)
+    return { data: result, error: null }
+  } catch (err) {
+    console.error('Failed to update room type:', err)
+    return { error: handleError(err) }
   }
-
-  return { data: result as RoomType, error: null }
 }
 
 /**
  * Delete a custom room type (system defaults cannot be deleted)
  */
 export async function deleteRoomType(id: string): Promise<ServiceResult> {
-  const { error } = await supabase
-    .from('room_types')
-    .delete()
-    .eq('id', id)
-
-  if (error) {
-    console.error('Failed to delete room type:', error)
-    if (error.code === '42501') {
-      return { error: 'Vous ne pouvez pas supprimer les types par defaut' }
-    }
-    return { error: 'Erreur lors de la suppression' }
+  try {
+    await api.delete(`/room-types/${id}`)
+    return { error: null }
+  } catch (err) {
+    console.error('Failed to delete room type:', err)
+    return { error: handleError(err) }
   }
-
-  return { error: null }
 }
 
 /**

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   createWorkSession,
   getWorkSessions,
@@ -122,26 +122,18 @@ describe('getWorkSessions', () => {
   ]
 
   it('should return all work sessions for the user', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: mockSessions, error: null }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockSessions)
 
     const result = await getWorkSessions()
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(1)
     expect(result.data![0].amount_cents).toBe(4500)
-    expect(supabase.from).toHaveBeenCalledWith('work_sessions')
+    expect(api.get).toHaveBeenCalledWith('/work-sessions')
   })
 
   it('should return empty array when no sessions', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: [], error: null }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getWorkSessions()
 
@@ -150,18 +142,11 @@ describe('getWorkSessions', () => {
   })
 
   it('should handle database errors', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({
-          data: null,
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await getWorkSessions()
 
-    expect(result.error).toBe('Échec du chargement des prestations')
+    expect(result.error).toBe('Database error')
     expect(result.data).toEqual([])
   })
 })
@@ -181,19 +166,14 @@ describe('getWorkSessionsByStaffMember', () => {
       },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: mockSessions, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockSessions)
 
     const result = await getWorkSessionsByStaffMember('staff-1')
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(1)
     expect(result.data![0].staff_member_id).toBe('staff-1')
+    expect(api.get).toHaveBeenCalledWith('/work-sessions?staff_member_id=staff-1')
   })
 })
 
@@ -218,18 +198,13 @@ describe('createWorkSession', () => {
       updated_at: '2026-02-07T10:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockCreated, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockCreated)
 
     const result = await createWorkSession(validData)
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockCreated)
+    expect(api.post).toHaveBeenCalledWith('/work-sessions', validData)
   })
 
   it('should return validation error for invalid data', async () => {
@@ -241,20 +216,11 @@ describe('createWorkSession', () => {
   })
 
   it('should handle database errors', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Database error' },
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await createWorkSession(validData)
 
-    expect(result.error).toBe('Échec de la création de la prestation')
+    expect(result.error).toBe('Database error')
   })
 })
 
@@ -273,15 +239,7 @@ describe('updateWorkSession', () => {
       updated_at: '2026-02-07T11:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockUpdated, error: null }),
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(mockUpdated)
 
     const result = await updateWorkSession('session-1', {
       duration_minutes: 240,
@@ -301,28 +259,19 @@ describe('updateWorkSession', () => {
 
 describe('deleteWorkSession', () => {
   it('should delete a work session', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.delete).mockResolvedValue(undefined)
 
     const result = await deleteWorkSession('session-1')
 
     expect(result.error).toBeNull()
+    expect(api.delete).toHaveBeenCalledWith('/work-sessions/session-1')
   })
 
   it('should handle database errors', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+    vi.mocked(api.delete).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await deleteWorkSession('session-1')
 
-    expect(result.error).toBe('Échec de la suppression de la prestation')
+    expect(result.error).toBe('Database error')
   })
 })

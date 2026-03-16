@@ -5,13 +5,19 @@
  * Service for fetching and organizing schedule entries for calendar display
  */
 
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import type {
   CalendarEvent,
   CalendarDay,
   CalendarMonth,
   CalendarServiceResult,
 } from '../lib/types/calendar.types'
+
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
+}
 
 // ============================================================================
 // Data Fetching
@@ -26,56 +32,19 @@ export async function getClientScheduleForMonth(
   year: number,
   month: number
 ): Promise<CalendarServiceResult<CalendarEvent[]>> {
-  // Build date range for the month
-  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
-  const lastDay = new Date(year, month + 1, 0).getDate()
-  const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  try {
+    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
+    const lastDay = new Date(year, month + 1, 0).getDate()
+    const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-  const { data, error } = await supabase
-    .from('schedule_entries')
-    .select(
-      `
-      id,
-      scheduled_date,
-      start_time,
-      end_time,
-      description,
-      status,
-      notes,
-      staff_member:staff_members(id, first_name, last_name)
-    `
+    const data = await api.get<CalendarEvent[]>(
+      `/calendar?client_id=${clientId}&date_from=${startDate}&date_to=${endDate}`
     )
-    .eq('client_id', clientId)
-    .gte('scheduled_date', startDate)
-    .lte('scheduled_date', endDate)
-    .neq('status', 'cancelled')
-    .order('scheduled_date', { ascending: true })
-    .order('start_time', { ascending: true })
-
-  if (error) {
-    console.error('Failed to fetch schedule for month:', error)
-    return { data: [], error: 'Erreur lors du chargement du calendrier' }
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to fetch schedule for month:', err)
+    return { data: [], error: handleError(err) }
   }
-
-  // Transform to CalendarEvent format
-  const events: CalendarEvent[] = (data || []).map((entry) => ({
-    id: entry.id,
-    scheduledDate: entry.scheduled_date,
-    startTime: entry.start_time,
-    endTime: entry.end_time,
-    description: entry.description,
-    status: entry.status as 'scheduled' | 'completed' | 'cancelled',
-    notes: entry.notes,
-    staffMember: entry.staff_member
-      ? {
-          id: (entry.staff_member as { id: string }).id,
-          firstName: (entry.staff_member as { first_name: string }).first_name,
-          lastName: (entry.staff_member as { last_name: string }).last_name,
-        }
-      : null,
-  }))
-
-  return { data: events, error: null }
 }
 
 /**
@@ -84,50 +53,13 @@ export async function getClientScheduleForMonth(
 export async function getScheduleEntryDetails(
   entryId: string
 ): Promise<CalendarServiceResult<CalendarEvent | null>> {
-  const { data, error } = await supabase
-    .from('schedule_entries')
-    .select(
-      `
-      id,
-      scheduled_date,
-      start_time,
-      end_time,
-      description,
-      status,
-      notes,
-      staff_member:staff_members(id, first_name, last_name)
-    `
-    )
-    .eq('id', entryId)
-    .maybeSingle()
-
-  if (error) {
-    console.error('Failed to fetch schedule entry:', error)
-    return { data: null, error: 'Erreur lors du chargement des details' }
+  try {
+    const data = await api.get<CalendarEvent | null>(`/calendar/${entryId}`)
+    return { data, error: null }
+  } catch (err) {
+    console.error('Failed to fetch schedule entry:', err)
+    return { data: null, error: handleError(err) }
   }
-
-  if (!data) {
-    return { data: null, error: null }
-  }
-
-  const event: CalendarEvent = {
-    id: data.id,
-    scheduledDate: data.scheduled_date,
-    startTime: data.start_time,
-    endTime: data.end_time,
-    description: data.description,
-    status: data.status as 'scheduled' | 'completed' | 'cancelled',
-    notes: data.notes,
-    staffMember: data.staff_member
-      ? {
-          id: (data.staff_member as { id: string }).id,
-          firstName: (data.staff_member as { first_name: string }).first_name,
-          lastName: (data.staff_member as { last_name: string }).last_name,
-        }
-      : null,
-  }
-
-  return { data: event, error: null }
 }
 
 // ============================================================================
@@ -230,36 +162,15 @@ export function buildCalendarMonth(
 export async function getStaffClients(
   staffMemberId: string
 ): Promise<CalendarServiceResult<Array<{ id: string; name: string }>>> {
-  const { data, error } = await supabase
-    .from('schedule_entries')
-    .select(
-      `
-      client:clients(id, name)
-    `
+  try {
+    const data = await api.get<Array<{ id: string; name: string }>>(
+      `/calendar/staff-clients?staff_member_id=${staffMemberId}`
     )
-    .eq('staff_member_id', staffMemberId)
-    .neq('status', 'cancelled')
-
-  if (error) {
-    console.error('Failed to fetch staff clients:', error)
-    return { data: [], error: 'Erreur lors du chargement des clients' }
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to fetch staff clients:', err)
+    return { data: [], error: handleError(err) }
   }
-
-  // Extract unique clients
-  const clientsMap = new Map<string, string>()
-  for (const entry of data || []) {
-    const client = entry.client as { id: string; name: string } | null
-    if (client && !clientsMap.has(client.id)) {
-      clientsMap.set(client.id, client.name)
-    }
-  }
-
-  const clients = Array.from(clientsMap.entries()).map(([id, name]) => ({
-    id,
-    name,
-  }))
-
-  return { data: clients, error: null }
 }
 
 // ============================================================================

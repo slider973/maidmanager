@@ -5,7 +5,7 @@ import { useInvitationToken } from '../services/staff-account.service'
 import { LoadingButton } from '../components/ui/LoadingButton'
 import { showSuccess, showError } from '../components/ui/Toast'
 import { useAuth } from '../lib/auth'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams()
@@ -44,7 +44,7 @@ export default function VerifyEmail() {
     if (inviteToken && typeof inviteToken === 'string' && result.data?.user) {
       setStatus('linking')
 
-      const linkResult = await useInvitationToken(inviteToken, result.data.user.id)
+      const linkResult = await useInvitationToken(inviteToken, String(result.data.user.id))
 
       if (linkResult.success) {
         setIsStaffAccount(true)
@@ -65,24 +65,23 @@ export default function VerifyEmail() {
       setStatus('linking')
 
       const user = result.data.user
-      const managerId = user.user_metadata?.manager_id
+      const managerId = (user as any).manager_id || searchParams.manager_id
       const userEmail = user.email
 
       if (managerId && userEmail) {
-        // Find the staff member created during signup
-        const { data: staffData } = await supabase
-          .from('staff_members')
-          .select('id')
-          .eq('user_id', managerId)
-          .eq('email', userEmail)
-          .single()
+        try {
+          // Find the staff member and link the profile via API
+          const staffList = await api.get<{ id: string }[]>(
+            `/staff-members?user_id=${managerId}&email=${encodeURIComponent(userEmail)}`
+          )
+          const staffData = staffList?.[0]
 
-        if (staffData) {
-          // Link the profile to the staff member
-          await supabase
-            .from('profiles')
-            .update({ staff_account_id: staffData.id })
-            .eq('id', user.id)
+          if (staffData) {
+            // Link the profile to the staff member
+            await api.put(`/profiles/${user.id}`, { staff_account_id: staffData.id })
+          }
+        } catch (err) {
+          console.warn('Failed to link staff profile:', err)
         }
       }
 

@@ -8,7 +8,7 @@ import { createSignal, createResource, Show } from 'solid-js'
 import type { Component } from 'solid-js'
 import { LoadingButton } from '../ui/LoadingButton'
 import { showSuccess, showError } from '../ui/Toast'
-import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import { updateTimeEntry, calculateDuration } from '../../services/time-entry.service'
 import type { TimeEntry } from '../../lib/types/portal.types'
 
@@ -28,23 +28,10 @@ export const TimeEntryEditForm: Component<TimeEntryEditFormProps> = (props) => {
   const [entry] = createResource(
     () => props.entryId,
     async (entryId) => {
-      const { data, error } = await supabase
-        .from('time_entries')
-        .select(`
-          *,
-          client:clients(id, name),
-          staff_member:staff_members(id, first_name, last_name)
-        `)
-        .eq('id', entryId)
-        .single()
-
-      if (error) throw new Error(error.message)
-
-      // Initialize form values
-      const entryData = data as TimeEntry & {
+      const entryData = await api.get<TimeEntry & {
         client: { id: string; name: string }
         staff_member: { id: string; first_name: string; last_name: string }
-      }
+      }>(`/time-entries/${entryId}`)
 
       // Format dates for datetime-local input
       setClockInAt(entryData.clock_in_at.slice(0, 16))
@@ -95,24 +82,19 @@ export const TimeEntryEditForm: Component<TimeEntryEditFormProps> = (props) => {
         )
 
         // Get staff hourly rate
-        const { data: staff } = await supabase
-          .from('staff_members')
-          .select('hourly_rate_cents')
-          .eq('id', result.data.staff_member_id)
-          .single()
+        const staff = await api.get<{ hourly_rate_cents: number }>(
+          `/staff-members/${result.data.staff_member_id}`
+        )
 
         const hourlyRateCents = staff?.hourly_rate_cents || 0
         const amountCents = Math.round((durationMinutes / 60) * hourlyRateCents)
 
         // Update work_session
-        await supabase
-          .from('work_sessions')
-          .update({
-            duration_minutes: durationMinutes,
-            amount_cents: amountCents,
-            session_date: updates.clock_in_at!.split('T')[0],
-          })
-          .eq('id', result.data.work_session_id)
+        await api.put(`/work-sessions/${result.data.work_session_id}`, {
+          duration_minutes: durationMinutes,
+          amount_cents: amountCents,
+          session_date: updates.clock_in_at!.split('T')[0],
+        })
       }
 
       showSuccess('Pointage mis a jour')

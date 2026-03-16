@@ -3,13 +3,19 @@
  * Handles user session tracking and management
  */
 
-import { supabase } from '../lib/supabase'
-import type { UserSession, UserSessionInsert } from '../lib/types/database'
+import { api, ApiError } from '../lib/api'
+import type { UserSession } from '../lib/types/database'
 
 export interface SessionInfo {
   deviceInfo: string
   browser: string | null
   os: string | null
+}
+
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
 }
 
 /**
@@ -70,93 +76,69 @@ export function parseUserAgent(userAgent: string): SessionInfo {
 export async function createSession(userId: string): Promise<{ data: UserSession | null; error: string | null }> {
   const sessionInfo = parseUserAgent(navigator.userAgent)
 
-  // First, mark all other sessions as not current
-  await supabase
-    .from('user_sessions')
-    .update({ is_current: false })
-    .eq('user_id', userId)
-
-  const sessionData: UserSessionInsert = {
-    user_id: userId,
-    device_info: sessionInfo.deviceInfo,
-    browser: sessionInfo.browser,
-    os: sessionInfo.os,
-    is_current: true,
+  try {
+    const data = await api.post<UserSession>('/sessions', {
+      user_id: userId,
+      device_info: sessionInfo.deviceInfo,
+      browser: sessionInfo.browser,
+      os: sessionInfo.os,
+      is_current: true,
+    })
+    return { data, error: null }
+  } catch (err) {
+    console.error('Failed to create session:', err)
+    return { data: null, error: handleError(err) }
   }
-
-  const { data, error } = await supabase
-    .from('user_sessions')
-    .insert(sessionData)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to create session:', error)
-    return { data: null, error: 'Erreur lors de la création de la session' }
-  }
-
-  return { data, error: null }
 }
 
 /**
  * Get all sessions for the current user
  */
 export async function getSessions(): Promise<{ data: UserSession[]; error: string | null }> {
-  const { data, error } = await supabase
-    .from('user_sessions')
-    .select('*')
-    .order('last_active_at', { ascending: false })
-
-  if (error) {
-    console.error('Failed to get sessions:', error)
-    return { data: [], error: 'Erreur lors de la récupération des sessions' }
+  try {
+    const data = await api.get<UserSession[]>('/sessions')
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to get sessions:', err)
+    return { data: [], error: handleError(err) }
   }
-
-  return { data: data || [], error: null }
 }
 
 /**
  * Delete a specific session
  */
 export async function deleteSession(sessionId: string): Promise<{ error: string | null }> {
-  const { error } = await supabase
-    .from('user_sessions')
-    .delete()
-    .eq('id', sessionId)
-
-  if (error) {
-    console.error('Failed to delete session:', error)
-    return { error: 'Erreur lors de la suppression de la session' }
+  try {
+    await api.delete(`/sessions/${sessionId}`)
+    return { error: null }
+  } catch (err) {
+    console.error('Failed to delete session:', err)
+    return { error: handleError(err) }
   }
-
-  return { error: null }
 }
 
 /**
  * Delete all sessions except the current one
  */
 export async function deleteOtherSessions(currentSessionId: string): Promise<{ error: string | null }> {
-  const { error } = await supabase
-    .from('user_sessions')
-    .delete()
-    .neq('id', currentSessionId)
-
-  if (error) {
-    console.error('Failed to delete other sessions:', error)
-    return { error: 'Erreur lors de la déconnexion des autres appareils' }
+  try {
+    await api.delete(`/sessions/others/${currentSessionId}`)
+    return { error: null }
+  } catch (err) {
+    console.error('Failed to delete other sessions:', err)
+    return { error: handleError(err) }
   }
-
-  return { error: null }
 }
 
 /**
  * Update last_active_at for the current session
  */
 export async function updateSessionActivity(sessionId: string): Promise<void> {
-  await supabase
-    .from('user_sessions')
-    .update({ last_active_at: new Date().toISOString() })
-    .eq('id', sessionId)
+  try {
+    await api.put(`/sessions/${sessionId}/activity`)
+  } catch {
+    // Silently fail for activity updates
+  }
 }
 
 /**

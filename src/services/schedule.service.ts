@@ -3,7 +3,7 @@
  * Provides CRUD operations for schedule entries
  */
 
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import type {
   ScheduleEntry,
   ScheduleEntryInsert,
@@ -31,6 +31,12 @@ const validationMessages = {
   startTimeRequired: "L'heure de debut est requise",
   descriptionTooLong: 'Description trop longue (max 500 caracteres)',
   endTimeBeforeStart: "L'heure de fin doit etre apres l'heure de debut",
+}
+
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
 }
 
 /**
@@ -77,56 +83,23 @@ export async function getScheduleEntries(
   params?: GetScheduleEntriesParams
 ): Promise<ServiceResult<ScheduleEntryWithStaff[]>> {
   try {
-    let query = supabase
-      .from('schedule_entries')
-      .select(`
-        *,
-        staff_member:staff_members (
-          id,
-          first_name,
-          last_name,
-          position
-        ),
-        client:clients (
-          id,
-          name
-        )
-      `)
+    const urlParams = new URLSearchParams()
 
-    // Apply filters if provided
     if (params?.filters) {
       const { staffMemberId, clientId, status, dateFrom, dateTo } = params.filters
-
-      if (staffMemberId) {
-        query = query.eq('staff_member_id', staffMemberId)
-      }
-      if (clientId) {
-        query = query.eq('client_id', clientId)
-      }
-      if (status) {
-        query = query.eq('status', status)
-      }
-      if (dateFrom) {
-        query = query.gte('scheduled_date', dateFrom)
-      }
-      if (dateTo) {
-        query = query.lte('scheduled_date', dateTo)
-      }
+      if (staffMemberId) urlParams.set('staff_member_id', staffMemberId)
+      if (clientId) urlParams.set('client_id', clientId)
+      if (status) urlParams.set('status', status)
+      if (dateFrom) urlParams.set('date_from', dateFrom)
+      if (dateTo) urlParams.set('date_to', dateTo)
     }
 
-    // Order by date and time
-    const { data, error } = await query
-      .order('scheduled_date', { ascending: true })
-      .order('start_time', { ascending: true })
-
-    if (error) {
-      throw error
-    }
-
-    return { data: (data as ScheduleEntryWithStaff[]) || [], error: null }
+    const query = urlParams.toString()
+    const data = await api.get<ScheduleEntryWithStaff[]>(`/schedule-entries${query ? `?${query}` : ''}`)
+    return { data: data || [], error: null }
   } catch (err) {
     console.error('Failed to get schedule entries:', err)
-    return { data: [], error: 'Échec du chargement des interventions' }
+    return { data: [], error: handleError(err) }
   }
 }
 
@@ -137,32 +110,11 @@ export async function getScheduleEntry(
   id: string
 ): Promise<ServiceResult<ScheduleEntryWithStaff>> {
   try {
-    const { data, error } = await supabase
-      .from('schedule_entries')
-      .select(`
-        *,
-        staff_member:staff_members (
-          id,
-          first_name,
-          last_name,
-          position
-        ),
-        client:clients (
-          id,
-          name
-        )
-      `)
-      .eq('id', id)
-      .single()
-
-    if (error) {
-      throw error
-    }
-
-    return { data: data as ScheduleEntryWithStaff, error: null }
+    const data = await api.get<ScheduleEntryWithStaff>(`/schedule-entries/${id}`)
+    return { data, error: null }
   } catch (err) {
     console.error('Failed to get schedule entry:', err)
-    return { error: 'Intervention non trouvée' }
+    return { error: handleError(err) }
   }
 }
 
@@ -179,20 +131,11 @@ export async function createScheduleEntry(
   }
 
   try {
-    const { data: entry, error } = await supabase
-      .from('schedule_entries')
-      .insert(data)
-      .select()
-      .single()
-
-    if (error) {
-      throw error
-    }
-
+    const entry = await api.post<ScheduleEntry>('/schedule-entries', data)
     return { data: entry, error: null }
   } catch (err) {
     console.error('Failed to create schedule entry:', err)
-    return { error: "Échec de la création de l'intervention" }
+    return { error: handleError(err) }
   }
 }
 
@@ -218,21 +161,11 @@ export async function updateScheduleEntry(
   }
 
   try {
-    const { data: entry, error } = await supabase
-      .from('schedule_entries')
-      .update(data)
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (error) {
-      throw error
-    }
-
+    const entry = await api.put<ScheduleEntry>(`/schedule-entries/${id}`, data)
     return { data: entry, error: null }
   } catch (err) {
     console.error('Failed to update schedule entry:', err)
-    return { error: "Échec de la modification de l'intervention" }
+    return { error: handleError(err) }
   }
 }
 
@@ -241,19 +174,11 @@ export async function updateScheduleEntry(
  */
 export async function deleteScheduleEntry(id: string): Promise<ServiceResult> {
   try {
-    const { error } = await supabase
-      .from('schedule_entries')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      throw error
-    }
-
+    await api.delete(`/schedule-entries/${id}`)
     return { error: null }
   } catch (err) {
     console.error('Failed to delete schedule entry:', err)
-    return { error: "Échec de la suppression de l'intervention" }
+    return { error: handleError(err) }
   }
 }
 
@@ -266,19 +191,11 @@ export async function updateScheduleStatus(
   status: ScheduleStatus
 ): Promise<ServiceResult> {
   try {
-    const { error } = await supabase
-      .from('schedule_entries')
-      .update({ status })
-      .eq('id', id)
-
-    if (error) {
-      throw error
-    }
-
+    await api.put(`/schedule-entries/${id}`, { status })
     return { error: null }
   } catch (err) {
     console.error('Failed to update schedule status:', err)
-    return { error: "Échec de la modification de l'intervention" }
+    return { error: handleError(err) }
   }
 }
 
@@ -290,33 +207,12 @@ export async function getUnbilledInterventions(
   clientId: string
 ): Promise<ServiceResult<ScheduleEntryWithStaff[]>> {
   try {
-    const { data, error } = await supabase
-      .from('schedule_entries')
-      .select(`
-        *,
-        staff_member:staff_members (
-          id,
-          first_name,
-          last_name,
-          position
-        ),
-        client:clients (
-          id,
-          name
-        )
-      `)
-      .eq('client_id', clientId)
-      .eq('status', 'completed')
-      .is('invoice_line_id', null) // Not yet invoiced
-      .order('scheduled_date', { ascending: true })
-
-    if (error) {
-      throw error
-    }
-
-    return { data: (data as ScheduleEntryWithStaff[]) || [], error: null }
+    const data = await api.get<ScheduleEntryWithStaff[]>(
+      `/schedule-entries?client_id=${clientId}&status=completed&unbilled=true`
+    )
+    return { data: data || [], error: null }
   } catch (err) {
     console.error('Failed to get unbilled interventions:', err)
-    return { data: [], error: 'Échec du chargement des interventions non facturées' }
+    return { data: [], error: handleError(err) }
   }
 }

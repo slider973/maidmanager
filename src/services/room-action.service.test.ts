@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   createRoomAction,
   getActionsForEntry,
@@ -34,19 +34,20 @@ describe('createRoomAction', () => {
       created_at: '2026-02-07T10:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockAction, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockAction)
 
     const result = await createRoomAction(validAction)
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockAction)
     expect(result.data?.time_entry_id).toBe('entry-123')
+    expect(api.post).toHaveBeenCalledWith('/room-actions', {
+      time_entry_id: 'entry-123',
+      room_type_id: 'room-456',
+      action_type_id: 'action-789',
+      client_room_id: null,
+      notes: 'Test note',
+    })
   })
 
   it('should return error when time_entry_id is missing', async () => {
@@ -89,13 +90,7 @@ describe('createRoomAction', () => {
   })
 
   it('should handle database errors', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: null, error: { message: 'Insert failed' } }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockRejectedValue(new ApiError('Insert failed', 500))
 
     const result = await createRoomAction(validAction)
 
@@ -129,29 +124,18 @@ describe('getActionsForEntry', () => {
       },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: mockActions, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockActions)
 
     const result = await getActionsForEntry('entry-123')
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(2)
     expect(result.data?.[0].room_type?.name_fr).toBe('Salle de bain')
+    expect(api.get).toHaveBeenCalledWith('/room-actions?time_entry_id=entry-123')
   })
 
   it('should return empty array when no actions exist', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getActionsForEntry('entry-123')
 
@@ -171,19 +155,11 @@ describe('getTodayActions', () => {
         performed_at: '2026-02-07T09:00:00Z',
         room_type: { id: 'room-1', name: 'bathroom', name_fr: 'Salle de bain' },
         action_type: { id: 'action-1', name: 'cleaning', name_fr: 'Nettoyage' },
-        time_entry: { staff_member_id: 'staff-456' }, // Include time_entry with staff_member_id
+        time_entry: { staff_member_id: 'staff-456' },
       },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        gte: vi.fn().mockReturnValue({
-          lt: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: mockActions, error: null }),
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockActions)
 
     const result = await getTodayActions('staff-456')
 
@@ -192,15 +168,7 @@ describe('getTodayActions', () => {
   })
 
   it('should return empty array when no actions today', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        gte: vi.fn().mockReturnValue({
-          lt: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({ data: [], error: null }),
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getTodayActions('staff-456')
 

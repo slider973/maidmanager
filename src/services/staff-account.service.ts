@@ -4,7 +4,7 @@
  * Manages staff account creation and linking via invitation links
  */
 
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 
 export interface CreateInvitationResult {
   success: boolean
@@ -20,103 +20,35 @@ export interface ValidateInvitationResult {
   message: string
 }
 
-// Type for staff_invitations table (not yet in generated types)
-// Keeping for documentation purposes
-/* interface StaffInvitation {
-  id: string
-  staff_member_id: string
-  token: string
-  created_at: string
-  expires_at: string
-  used_at: string | null
-  used_by: string | null
-} */
-
-/**
- * Generate a secure random token
- */
-function generateToken(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-  let token = ''
-  for (let i = 0; i < 32; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return token
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
 }
 
 /**
  * Create an invitation link for a staff member
  */
 export async function createInvitationLink(staffMemberId: string): Promise<CreateInvitationResult> {
-  // Check if staff member exists
-  const { data: staffMember, error: staffError } = await supabase
-    .from('staff_members')
-    .select('id, first_name, last_name')
-    .eq('id', staffMemberId)
-    .single()
+  try {
+    const result = await api.post<{ token: string }>(`/staff-members/${staffMemberId}/invitation`)
 
-  if (staffError || !staffMember) {
+    const token = result.token
+    const baseUrl = window.location.origin
+    const invitationLink = `${baseUrl}/signup?invite=${token}`
+
     return {
-      success: false,
-      message: 'Membre du personnel introuvable',
-    }
-  }
-
-  // Check if staff already has a linked account
-  const { data: existingProfile } = await supabase
-    .from('profiles')
-    .select('id, staff_account_id')
-    .eq('staff_account_id', staffMemberId)
-    .maybeSingle()
-
-  if (existingProfile) {
-    return {
-      success: false,
-      message: 'Un compte existe deja pour cet employe',
-    }
-  }
-
-  // Generate unique token
-  const token = generateToken()
-
-  // Set expiration to 7 days from now
-  const expiresAt = new Date()
-  expiresAt.setDate(expiresAt.getDate() + 7)
-
-  // Delete any existing unused invitations for this staff member
-  // Using type assertion since staff_invitations isn't in generated types yet
-  await (supabase as any)
-    .from('staff_invitations')
-    .delete()
-    .eq('staff_member_id', staffMemberId)
-    .is('used_at', null)
-
-  // Create new invitation
-  const { error: insertError } = await (supabase as any)
-    .from('staff_invitations')
-    .insert({
-      staff_member_id: staffMemberId,
+      success: true,
+      message: 'Lien d\'invitation cree avec succes',
+      invitationLink,
       token,
-      expires_at: expiresAt.toISOString(),
-    })
-
-  if (insertError) {
-    console.error('Failed to create invitation:', insertError)
+    }
+  } catch (err) {
+    console.error('Failed to create invitation:', err)
     return {
       success: false,
-      message: 'Erreur lors de la creation de l\'invitation',
+      message: handleError(err),
     }
-  }
-
-  // Build invitation link
-  const baseUrl = window.location.origin
-  const invitationLink = `${baseUrl}/signup?invite=${token}`
-
-  return {
-    success: true,
-    message: 'Lien d\'invitation cree avec succes',
-    invitationLink,
-    token,
   }
 }
 
@@ -124,53 +56,26 @@ export async function createInvitationLink(staffMemberId: string): Promise<Creat
  * Validate an invitation token (for signup page)
  */
 export async function validateInvitationToken(token: string): Promise<ValidateInvitationResult> {
-  // Using type assertion since staff_invitations isn't in generated types yet
-  const { data: invitation, error } = await (supabase as any)
-    .from('staff_invitations')
-    .select(`
-      id,
-      staff_member_id,
-      expires_at,
-      used_at,
-      staff_members (
-        first_name,
-        last_name
-      )
-    `)
-    .eq('token', token)
-    .single()
+  try {
+    const result = await api.get<{
+      valid: boolean
+      staff_member_id?: string
+      staff_name?: string
+      message: string
+    }>(`/staff-members/invitation/validate?token=${encodeURIComponent(token)}`)
 
-  if (error || !invitation) {
+    return {
+      valid: result.valid,
+      staffMemberId: result.staff_member_id,
+      staffName: result.staff_name,
+      message: result.message,
+    }
+  } catch (err) {
+    console.error('Failed to validate invitation:', err)
     return {
       valid: false,
-      message: 'Invitation invalide ou introuvable',
+      message: handleError(err),
     }
-  }
-
-  if (invitation.used_at) {
-    return {
-      valid: false,
-      message: 'Cette invitation a deja ete utilisee',
-    }
-  }
-
-  if (new Date(invitation.expires_at) < new Date()) {
-    return {
-      valid: false,
-      message: 'Cette invitation a expire',
-    }
-  }
-
-  const staffMember = invitation.staff_members as { first_name: string; last_name: string } | null
-  const staffName = staffMember
-    ? `${staffMember.first_name} ${staffMember.last_name}`
-    : 'Employe'
-
-  return {
-    valid: true,
-    staffMemberId: invitation.staff_member_id,
-    staffName,
-    message: 'Invitation valide',
   }
 }
 
@@ -178,33 +83,29 @@ export async function validateInvitationToken(token: string): Promise<ValidateIn
  * Use an invitation token after signup
  */
 export async function useInvitationToken(token: string, userId: string): Promise<{ success: boolean; message: string }> {
-  // Call the database function
-  // Using type assertion since the function isn't in generated types yet
-  const { data, error } = await (supabase as any)
-    .rpc('use_invitation_token', {
-      p_token: token,
-      p_user_id: userId,
+  try {
+    const result = await api.post<{ success: boolean; message: string }>('/staff-members/invitation/use', {
+      token,
+      user_id: userId,
     })
 
-  if (error) {
-    console.error('Failed to use invitation:', error)
+    if (!result.success) {
+      return {
+        success: false,
+        message: result.message || 'Erreur inconnue',
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Compte lie avec succes',
+    }
+  } catch (err) {
+    console.error('Failed to use invitation:', err)
     return {
       success: false,
-      message: 'Erreur lors de l\'activation de l\'invitation',
+      message: handleError(err),
     }
-  }
-
-  const result = data?.[0] as { success: boolean; message: string } | undefined
-  if (!result?.success) {
-    return {
-      success: false,
-      message: result?.message || 'Erreur inconnue',
-    }
-  }
-
-  return {
-    success: true,
-    message: 'Compte lie avec succes',
   }
 }
 
@@ -215,40 +116,37 @@ export async function linkAccount(
   profileId: string,
   staffMemberId: string
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase
-    .from('profiles')
-    .update({ staff_account_id: staffMemberId })
-    .eq('id', profileId)
-
-  return { error: error?.message ?? null }
+  try {
+    await api.post('/staff-members/link-account', {
+      profile_id: profileId,
+      staff_member_id: staffMemberId,
+    })
+    return { error: null }
+  } catch (err) {
+    return { error: handleError(err) }
+  }
 }
 
 /**
  * Check if a staff member has a linked account
  */
 export async function isStaffLinked(staffMemberId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, staff_account_id')
-    .eq('staff_account_id', staffMemberId)
-    .maybeSingle()
-
-  return data !== null
+  try {
+    const result = await api.get<{ linked: boolean }>(`/staff-members/${staffMemberId}/linked`)
+    return result.linked
+  } catch {
+    return false
+  }
 }
 
 /**
  * Get the staff member ID for a user
  */
 export async function getStaffMemberForUser(userId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('staff_account_id')
-    .eq('id', userId)
-    .single()
-
-  if (error || !data) {
+  try {
+    const result = await api.get<{ staff_member_id: string | null }>(`/staff-members/for-user/${userId}`)
+    return result.staff_member_id
+  } catch {
     return null
   }
-
-  return data.staff_account_id
 }

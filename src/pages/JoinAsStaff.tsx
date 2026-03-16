@@ -7,7 +7,8 @@
 import { createSignal, createEffect, Show, onMount } from 'solid-js'
 import { useParams, useNavigate, A } from '@solidjs/router'
 import { LoadingButton } from '../components/ui/LoadingButton'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
+import { signUp as authSignUp } from '../services/auth.service'
 import { useAuth } from '../lib/auth'
 import { PASSWORD_MIN_LENGTH } from '../lib/utils/errorMessages'
 
@@ -84,35 +85,23 @@ export default function JoinAsStaff() {
     setLoading(true)
 
     try {
-      // 1. Create the user account
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email().trim(),
-        password: password(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/verify?staff=true`,
-          data: {
-            first_name: firstName().trim(),
-            last_name: lastName().trim(),
-            manager_id: managerId,
-            is_staff_signup: true,
-          },
-        },
-      })
+      // 1. Create the user account via API
+      const fullName = `${firstName().trim()} ${lastName().trim()}`
+      const authResult = await authSignUp(email().trim(), password(), fullName)
 
-      if (authError) {
-        if (authError.message.includes('already registered')) {
+      if (authResult.error) {
+        if (authResult.error.includes('deja utilise') || authResult.error.includes('already')) {
           setError('Cet email est deja utilise. Connectez-vous plutot.')
         } else {
-          setError(authError.message)
+          setError(authResult.error)
         }
         setLoading(false)
         return
       }
 
       // 2. Create the staff member entry (linked to manager)
-      const { error: staffError } = await supabase
-        .from('staff_members')
-        .insert({
+      try {
+        await api.post('/staff-members', {
           user_id: managerId, // The manager who "owns" this staff
           first_name: firstName().trim(),
           last_name: lastName().trim(),
@@ -120,28 +109,26 @@ export default function JoinAsStaff() {
           position: 'housekeeper', // Default position
           is_active: true,
         })
-
-      if (staffError) {
-        console.error('Failed to create staff member:', staffError)
+      } catch (staffErr) {
+        console.error('Failed to create staff member:', staffErr)
         // Don't fail the signup, the manager can add details later
       }
 
-      // 3. If session exists (no email verification required), link the profile
-      if (authData.session && authData.user) {
-        // Get the staff member we just created
-        const { data: staffData } = await supabase
-          .from('staff_members')
-          .select('id')
-          .eq('user_id', managerId)
-          .eq('email', email().trim())
-          .single()
+      // 3. If user was returned (no email verification required), link the profile
+      if (authResult.data?.user && !authResult.data.needsVerification) {
+        try {
+          // Get the staff member we just created
+          const staffList = await api.get<{ id: string }[]>(
+            `/staff-members?user_id=${managerId}&email=${encodeURIComponent(email().trim())}`
+          )
+          const staffData = staffList?.[0]
 
-        if (staffData) {
-          // Update the profile to link to staff member
-          await supabase
-            .from('profiles')
-            .update({ staff_account_id: staffData.id })
-            .eq('id', authData.user.id)
+          if (staffData) {
+            // Update the profile to link to staff member
+            await api.put(`/profiles/${authResult.data.user.id}`, { staff_account_id: staffData.id })
+          }
+        } catch (linkErr) {
+          console.warn('Failed to link staff profile:', linkErr)
         }
 
         setStep('success')

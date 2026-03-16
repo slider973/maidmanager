@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   getRoomTypes,
   getActionTypes,
@@ -25,29 +25,18 @@ describe('getRoomTypes', () => {
       { id: 'rt-3', name: 'bedroom', name_fr: 'Chambre', sort_order: 3, is_active: true },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: mockRoomTypes, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockRoomTypes)
 
     const result = await getRoomTypes()
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(3)
     expect(result.data?.[0].name_fr).toBe('Salle de bain')
+    expect(api.get).toHaveBeenCalledWith('/room-types?is_active=true')
   })
 
   it('should return empty array when no room types exist', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getRoomTypes()
 
@@ -56,13 +45,7 @@ describe('getRoomTypes', () => {
   })
 
   it('should handle database errors', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: null, error: { message: 'Database error' } }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await getRoomTypes()
 
@@ -78,29 +61,18 @@ describe('getActionTypes', () => {
       { id: 'at-2', name: 'organizing', name_fr: 'Rangement', sort_order: 2, is_active: true },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: mockActionTypes, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockActionTypes)
 
     const result = await getActionTypes()
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(2)
     expect(result.data?.[0].name_fr).toBe('Nettoyage')
+    expect(api.get).toHaveBeenCalledWith('/action-types?is_active=true')
   })
 
   it('should return empty array when no action types exist', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getActionTypes()
 
@@ -130,13 +102,7 @@ describe('getActionTypesForPosition', () => {
       },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: mockActionTypes, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockActionTypes)
 
     const result = await getActionTypesForPosition('housekeeper')
 
@@ -173,13 +139,7 @@ describe('getActionTypesForPosition', () => {
       },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({ data: mockActionTypes, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockActionTypes)
 
     const result = await getActionTypesForPosition('housekeeper')
 

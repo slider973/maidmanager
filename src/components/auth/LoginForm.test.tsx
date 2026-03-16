@@ -109,8 +109,7 @@ describe('LoginForm', () => {
     it('should call onSuccess callback on successful login', async () => {
       vi.mocked(authService.signIn).mockResolvedValue({
         data: {
-          user: { id: '123', email: 'test@example.com' } as any,
-          session: { access_token: 'token' } as any,
+          user: { id: 123, email: 'test@example.com' } as any,
         },
         error: null,
       })

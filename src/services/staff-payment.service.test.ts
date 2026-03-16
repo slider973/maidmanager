@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   getStaffPayments,
   getStaffPaymentsByStaffMember,
@@ -36,16 +36,7 @@ describe('getStaffPayments', () => {
       },
     ]
 
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        select: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({
-            data: mockPayments,
-            error: null,
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.get).mockResolvedValue(mockPayments)
 
     const result = await getStaffPayments()
 
@@ -56,16 +47,7 @@ describe('getStaffPayments', () => {
   })
 
   it('should return empty array when no payments', async () => {
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        select: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({
-            data: [],
-            error: null,
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getStaffPayments()
 
@@ -74,20 +56,11 @@ describe('getStaffPayments', () => {
   })
 
   it('should handle database errors', async () => {
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        select: vi.fn().mockReturnValue({
-          order: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Database error' },
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await getStaffPayments()
 
-    expect(result.error).toBe('Échec du chargement des paiements')
+    expect(result.error).toBe('Database error')
     expect(result.data).toEqual([])
   })
 })
@@ -113,24 +86,14 @@ describe('getStaffPaymentsByStaffMember', () => {
       },
     ]
 
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({
-              data: mockPayments,
-              error: null,
-            }),
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.get).mockResolvedValue(mockPayments)
 
     const result = await getStaffPaymentsByStaffMember('staff-1')
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(2)
     expect(result.data?.[0].staff_member_id).toBe('staff-1')
+    expect(api.get).toHaveBeenCalledWith('/staff-payments?staff_member_id=staff-1')
   })
 })
 
@@ -152,18 +115,7 @@ describe('createStaffPayment', () => {
       updated_at: '2026-02-07T12:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: mockCreated,
-              error: null,
-            }),
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.post).mockResolvedValue(mockCreated)
 
     const result = await createStaffPayment(paymentData)
 
@@ -220,22 +172,11 @@ describe('createStaffPayment', () => {
       payment_date: '2026-02-07',
     }
 
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: null,
-              error: { message: 'Database error' },
-            }),
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.post).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await createStaffPayment(paymentData)
 
-    expect(result.error).toBe('Échec de la création du paiement')
+    expect(result.error).toBe('Database error')
   })
 })
 
@@ -258,20 +199,7 @@ describe('updateStaffPayment', () => {
       updated_at: '2026-02-07T14:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
-                data: mockUpdated,
-                error: null,
-              }),
-            }),
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.put).mockResolvedValue(mockUpdated)
 
     const result = await updateStaffPayment('payment-1', updateData)
 
@@ -307,36 +235,19 @@ describe('updateStaffPayment', () => {
 
 describe('deleteStaffPayment', () => {
   it('should delete a payment successfully', async () => {
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
-            data: null,
-            error: null,
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.delete).mockResolvedValue(undefined)
 
     const result = await deleteStaffPayment('payment-1')
 
     expect(result.error).toBeNull()
+    expect(api.delete).toHaveBeenCalledWith('/staff-payments/payment-1')
   })
 
   it('should handle database errors', async () => {
-    vi.mocked(supabase.from).mockImplementation((_table: string) => {
-      return {
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Database error' },
-          }),
-        }),
-      } as any
-    })
+    vi.mocked(api.delete).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await deleteStaffPayment('payment-1')
 
-    expect(result.error).toBe('Échec de la suppression du paiement')
+    expect(result.error).toBe('Database error')
   })
 })

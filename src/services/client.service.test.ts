@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   createClient,
   getClients,
@@ -38,19 +38,13 @@ describe('createClient', () => {
       updated_at: '2026-02-07T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockClient, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockClient)
 
     const result = await createClient(validData)
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockClient)
-    expect(supabase.from).toHaveBeenCalledWith('clients')
+    expect(api.post).toHaveBeenCalledWith('/clients', validData)
   })
 
   it('should return validation error when name is missing', async () => {
@@ -91,13 +85,7 @@ describe('createClient', () => {
       updated_at: '2026-02-07T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockClient, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockClient)
 
     const result = await createClient(dataWithEmail)
 
@@ -105,21 +93,12 @@ describe('createClient', () => {
     expect(result.data?.email).toBe('contact@example.com')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Database error' },
-          }),
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await createClient(validData)
 
-    expect(result.error).toBe('Échec de la création du client')
+    expect(result.error).toBe('Database error')
     expect(result.data).toBeUndefined()
   })
 })
@@ -151,11 +130,7 @@ describe('getClients', () => {
       },
     ]
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: mockClients, error: null }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockClients)
 
     const result = await getClients()
 
@@ -165,11 +140,7 @@ describe('getClients', () => {
   })
 
   it('should return empty array when no clients', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: [], error: null }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getClients()
 
@@ -192,35 +163,21 @@ describe('getClients', () => {
       },
     ]
 
-    const mockSelect = vi.fn().mockReturnValue({
-      ilike: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: mockClients, error: null }),
-      }),
-    })
-
-    vi.mocked(supabase.from).mockReturnValue({
-      select: mockSelect,
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockClients)
 
     const result = await getClients({ search: 'ABC' })
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockClients)
+    expect(api.get).toHaveBeenCalledWith('/clients?search=ABC')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({
-          data: null,
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await getClients()
 
-    expect(result.error).toBe('Échec du chargement des clients')
+    expect(result.error).toBe('Database error')
     expect(result.data).toEqual([])
   })
 })
@@ -239,31 +196,17 @@ describe('getClient', () => {
       updated_at: '2026-02-07T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockClient, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockClient)
 
     const result = await getClient('client-1')
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockClient)
+    expect(api.get).toHaveBeenCalledWith('/clients/client-1')
   })
 
   it('should return error when client not found', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Not found' },
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Client non trouvé', 404))
 
     const result = await getClient('non-existent-id')
 
@@ -287,15 +230,7 @@ describe('updateClient', () => {
       updated_at: '2026-02-07T01:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockClient, error: null }),
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(mockClient)
 
     const result = await updateClient('client-1', updateData)
 
@@ -315,27 +250,20 @@ describe('updateClient', () => {
 
 describe('deleteClient', () => {
   it('should delete a client successfully', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.delete).mockResolvedValue(undefined)
 
     const result = await deleteClient('client-1')
 
     expect(result.error).toBeNull()
+    expect(api.delete).toHaveBeenCalledWith('/clients/client-1')
   })
 
   it('should handle delete error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: { message: 'Cannot delete' } }),
-      }),
-    } as any)
+    vi.mocked(api.delete).mockRejectedValue(new ApiError('Cannot delete', 500))
 
     const result = await deleteClient('client-1')
 
-    expect(result.error).toBe('Échec de la suppression du client')
+    expect(result.error).toBe('Cannot delete')
   })
 })
 

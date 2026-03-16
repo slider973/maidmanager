@@ -3,7 +3,7 @@
  * Provides CRUD operations for clients (billing feature)
  */
 
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import { validateOptionalEmail } from '../lib/utils/errorMessages'
 import type { Client, ClientInsert, ClientUpdate } from '../lib/types/billing.types'
 
@@ -16,6 +16,12 @@ export interface ClientListOptions {
   search?: string
   orderBy?: 'name' | 'created_at' | 'updated_at'
   orderDirection?: 'asc' | 'desc'
+}
+
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
 }
 
 /**
@@ -63,18 +69,13 @@ export async function createClient(data: ClientInsert): Promise<ServiceResult<Cl
     return { error: validationError }
   }
 
-  const { data: client, error } = await supabase
-    .from('clients')
-    .insert(data)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to create client:', error)
-    return { error: 'Échec de la création du client' }
+  try {
+    const client = await api.post<Client>('/clients', data)
+    return { data: client, error: null }
+  } catch (err) {
+    console.error('Failed to create client:', err)
+    return { error: handleError(err) }
   }
-
-  return { data: client, error: null }
 }
 
 /**
@@ -83,44 +84,38 @@ export async function createClient(data: ClientInsert): Promise<ServiceResult<Cl
 export async function getClients(
   options?: ClientListOptions
 ): Promise<ServiceResult<Client[]>> {
-  let query = supabase.from('clients').select('*')
+  try {
+    const params = new URLSearchParams()
+    if (options?.search) {
+      params.set('search', options.search)
+    }
+    if (options?.orderBy) {
+      params.set('order_by', options.orderBy)
+    }
+    if (options?.orderDirection) {
+      params.set('order_direction', options.orderDirection)
+    }
 
-  // Apply search filter if specified
-  if (options?.search) {
-    query = query.ilike('name', `%${options.search}%`)
+    const query = params.toString()
+    const data = await api.get<Client[]>(`/clients${query ? `?${query}` : ''}`)
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to get clients:', err)
+    return { data: [], error: handleError(err) }
   }
-
-  // Apply ordering
-  const orderBy = options?.orderBy ?? 'name'
-  const orderDirection = options?.orderDirection ?? 'asc'
-  const ascending = orderDirection === 'asc'
-
-  const { data, error } = await query.order(orderBy, { ascending })
-
-  if (error) {
-    console.error('Failed to get clients:', error)
-    return { data: [], error: 'Échec du chargement des clients' }
-  }
-
-  return { data: data || [], error: null }
 }
 
 /**
  * Get a single client by ID
  */
 export async function getClient(id: string): Promise<ServiceResult<Client>> {
-  const { data, error } = await supabase
-    .from('clients')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (error) {
-    console.error('Failed to get client:', error)
-    return { error: 'Client non trouvé' }
+  try {
+    const data = await api.get<Client>(`/clients/${id}`)
+    return { data, error: null }
+  } catch (err) {
+    console.error('Failed to get client:', err)
+    return { error: handleError(err) }
   }
-
-  return { data, error: null }
 }
 
 /**
@@ -136,34 +131,24 @@ export async function updateClient(
     return { error: validationError }
   }
 
-  const { data: client, error } = await supabase
-    .from('clients')
-    .update(data)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to update client:', error)
-    return { error: 'Échec de la mise à jour du client' }
+  try {
+    const client = await api.put<Client>(`/clients/${id}`, data)
+    return { data: client, error: null }
+  } catch (err) {
+    console.error('Failed to update client:', err)
+    return { error: handleError(err) }
   }
-
-  return { data: client, error: null }
 }
 
 /**
  * Delete a client
  */
 export async function deleteClient(id: string): Promise<ServiceResult> {
-  const { error } = await supabase
-    .from('clients')
-    .delete()
-    .eq('id', id)
-
-  if (error) {
-    console.error('Failed to delete client:', error)
-    return { error: 'Échec de la suppression du client' }
+  try {
+    await api.delete(`/clients/${id}`)
+    return { error: null }
+  } catch (err) {
+    console.error('Failed to delete client:', err)
+    return { error: handleError(err) }
   }
-
-  return { error: null }
 }

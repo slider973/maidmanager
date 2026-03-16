@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   createTask,
   getTasks,
@@ -121,26 +121,18 @@ describe('getTasks', () => {
   ]
 
   it('should return all tasks for the user', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: mockTasks, error: null }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(mockTasks)
 
     const result = await getTasks()
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(2)
     expect(result.data).toEqual(mockTasks)
-    expect(supabase.from).toHaveBeenCalledWith('tasks')
+    expect(api.get).toHaveBeenCalledWith('/tasks')
   })
 
   it('should return empty array when no tasks', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: [], error: null }),
-      }),
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([])
 
     const result = await getTasks()
 
@@ -151,22 +143,13 @@ describe('getTasks', () => {
   it('should filter by staffMemberId when provided', async () => {
     const filteredTasks = [mockTasks[0]]
 
-    const mockOrder = vi.fn().mockResolvedValue({ data: filteredTasks, error: null })
-    const mockEq = vi.fn().mockReturnValue({
-      order: mockOrder,
-    })
-    const mockSelect = vi.fn().mockReturnValue({
-      eq: mockEq,
-    })
-
-    vi.mocked(supabase.from).mockReturnValue({
-      select: mockSelect,
-    } as any)
+    vi.mocked(api.get).mockResolvedValue(filteredTasks)
 
     const result = await getTasks({ filters: { staffMemberId: 'staff-1' } })
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(filteredTasks)
+    expect(api.get).toHaveBeenCalledWith('/tasks?staff_member_id=staff-1')
   })
 
   it('should filter by status when provided', async () => {
@@ -175,22 +158,13 @@ describe('getTasks', () => {
       status: 'completed',
     }
 
-    const mockOrder = vi.fn().mockResolvedValue({ data: [completedTask], error: null })
-    const mockEq = vi.fn().mockReturnValue({
-      order: mockOrder,
-    })
-    const mockSelect = vi.fn().mockReturnValue({
-      eq: mockEq,
-    })
-
-    vi.mocked(supabase.from).mockReturnValue({
-      select: mockSelect,
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([completedTask])
 
     const result = await getTasks({ filters: { status: 'completed' } })
 
     expect(result.error).toBeNull()
     expect(result.data?.[0]?.status).toBe('completed')
+    expect(api.get).toHaveBeenCalledWith('/tasks?status=completed')
   })
 
   it('should filter by priority when provided', async () => {
@@ -199,37 +173,21 @@ describe('getTasks', () => {
       priority: 'urgent',
     }
 
-    const mockOrder = vi.fn().mockResolvedValue({ data: [urgentTask], error: null })
-    const mockEq = vi.fn().mockReturnValue({
-      order: mockOrder,
-    })
-    const mockSelect = vi.fn().mockReturnValue({
-      eq: mockEq,
-    })
-
-    vi.mocked(supabase.from).mockReturnValue({
-      select: mockSelect,
-    } as any)
+    vi.mocked(api.get).mockResolvedValue([urgentTask])
 
     const result = await getTasks({ filters: { priority: 'urgent' } })
 
     expect(result.error).toBeNull()
     expect(result.data?.[0]?.priority).toBe('urgent')
+    expect(api.get).toHaveBeenCalledWith('/tasks?priority=urgent')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({
-          data: null,
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.get).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await getTasks()
 
-    expect(result.error).toBe('Échec du chargement des missions')
+    expect(result.error).toBe('Database error')
     expect(result.data).toEqual([])
   })
 })
@@ -254,19 +212,13 @@ describe('createTask', () => {
       updated_at: '2026-02-06T00:00:00Z',
     }
 
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({ data: mockTask, error: null }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.post).mockResolvedValue(mockTask)
 
     const result = await createTask(validData)
 
     expect(result.error).toBeNull()
     expect(result.data).toEqual(mockTask)
-    expect(supabase.from).toHaveBeenCalledWith('tasks')
+    expect(api.post).toHaveBeenCalledWith('/tasks', validData)
   })
 
   it('should return validation error when staff_member_id is missing', async () => {
@@ -296,21 +248,12 @@ describe('createTask', () => {
     expect(result.data).toBeUndefined()
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: null,
-            error: { message: 'Database error' },
-          }),
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.post).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await createTask(validData)
 
-    expect(result.error).toBe('Échec de la création de la mission')
+    expect(result.error).toBe('Database error')
     expect(result.data).toBeUndefined()
   })
 })
@@ -331,20 +274,13 @@ describe('updateTask', () => {
   }
 
   it('should update a task', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockTask, error: null }),
-          }),
-        }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(mockTask)
 
     const result = await updateTask('task-1', { title: 'Updated title' })
 
     expect(result.error).toBeNull()
     expect(result.data?.title).toBe('Updated title')
+    expect(api.put).toHaveBeenCalledWith('/tasks/task-1', { title: 'Updated title' })
   })
 
   it('should return validation error when title is empty', async () => {
@@ -368,73 +304,46 @@ describe('updateTask', () => {
     expect(result.data).toBeUndefined()
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: null,
-              error: { message: 'Database error' },
-            }),
-          }),
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.put).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await updateTask('task-1', { title: 'Test' })
 
-    expect(result.error).toBe('Échec de la modification de la mission')
+    expect(result.error).toBe('Database error')
   })
 })
 
 describe('deleteTask', () => {
   it('should delete a task', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.delete).mockResolvedValue(undefined)
 
     const result = await deleteTask('task-1')
 
     expect(result.error).toBeNull()
+    expect(api.delete).toHaveBeenCalledWith('/tasks/task-1')
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      delete: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.delete).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await deleteTask('task-1')
 
-    expect(result.error).toBe('Échec de la suppression de la mission')
+    expect(result.error).toBe('Database error')
   })
 })
 
 describe('updateTaskStatus', () => {
   it('should update status to in_progress', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(undefined)
 
     const result = await updateTaskStatus('task-1', 'in_progress')
 
     expect(result.error).toBeNull()
+    expect(api.put).toHaveBeenCalledWith('/tasks/task-1', { status: 'in_progress' })
   })
 
   it('should update status to completed', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(undefined)
 
     const result = await updateTaskStatus('task-1', 'completed')
 
@@ -442,28 +351,18 @@ describe('updateTaskStatus', () => {
   })
 
   it('should update status back to pending', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    } as any)
+    vi.mocked(api.put).mockResolvedValue(undefined)
 
     const result = await updateTaskStatus('task-1', 'pending')
 
     expect(result.error).toBeNull()
   })
 
-  it('should handle Supabase error', async () => {
-    vi.mocked(supabase.from).mockReturnValue({
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({
-          error: { message: 'Database error' },
-        }),
-      }),
-    } as any)
+  it('should handle API error', async () => {
+    vi.mocked(api.put).mockRejectedValue(new ApiError('Database error', 500))
 
     const result = await updateTaskStatus('task-1', 'completed')
 
-    expect(result.error).toBe('Échec de la modification de la mission')
+    expect(result.error).toBe('Database error')
   })
 })

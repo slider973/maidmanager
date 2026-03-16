@@ -3,7 +3,7 @@
  * Provides CRUD operations for staff members
  */
 
-import { supabase } from '../lib/supabase'
+import { api, ApiError } from '../lib/api'
 import {
   validateOptionalEmail,
   validateRequired,
@@ -20,6 +20,12 @@ export interface StaffListOptions {
   isActive?: boolean
   orderBy?: 'first_name' | 'last_name' | 'position' | 'created_at'
   orderDirection?: 'asc' | 'desc'
+}
+
+function handleError(err: unknown): string {
+  if (err instanceof ApiError) return err.message
+  if (err instanceof Error && err.message === 'Failed to fetch') return 'Erreur de connexion'
+  return 'Une erreur est survenue'
 }
 
 /**
@@ -59,18 +65,13 @@ export async function createStaffMember(
     return { error: validationError }
   }
 
-  const { data: staff, error } = await supabase
-    .from('staff_members')
-    .insert(data)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to create staff member:', error)
-    return { error: 'Échec de la création du membre' }
+  try {
+    const staff = await api.post<StaffMember>('/staff-members', data)
+    return { data: staff, error: null }
+  } catch (err) {
+    console.error('Failed to create staff member:', err)
+    return { error: handleError(err) }
   }
-
-  return { data: staff, error: null }
 }
 
 /**
@@ -79,44 +80,38 @@ export async function createStaffMember(
 export async function getStaffMembers(
   options?: StaffListOptions
 ): Promise<ServiceResult<StaffMember[]>> {
-  let query = supabase.from('staff_members').select('*')
+  try {
+    const params = new URLSearchParams()
+    if (options?.isActive !== undefined) {
+      params.set('is_active', String(options.isActive))
+    }
+    if (options?.orderBy) {
+      params.set('order_by', options.orderBy)
+    }
+    if (options?.orderDirection) {
+      params.set('order_direction', options.orderDirection)
+    }
 
-  // Apply isActive filter if specified
-  if (options?.isActive !== undefined) {
-    query = query.eq('is_active', options.isActive)
+    const query = params.toString()
+    const data = await api.get<StaffMember[]>(`/staff-members${query ? `?${query}` : ''}`)
+    return { data: data || [], error: null }
+  } catch (err) {
+    console.error('Failed to get staff members:', err)
+    return { data: [], error: handleError(err) }
   }
-
-  // Apply ordering
-  const orderBy = options?.orderBy ?? 'created_at'
-  const orderDirection = options?.orderDirection ?? 'desc'
-  const ascending = orderDirection === 'asc'
-
-  const { data, error } = await query.order(orderBy, { ascending })
-
-  if (error) {
-    console.error('Failed to get staff members:', error)
-    return { data: [], error: 'Échec du chargement des membres' }
-  }
-
-  return { data: data || [], error: null }
 }
 
 /**
  * Get a single staff member by ID
  */
 export async function getStaffMember(id: string): Promise<ServiceResult<StaffMember>> {
-  const { data, error } = await supabase
-    .from('staff_members')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (error) {
-    console.error('Failed to get staff member:', error)
-    return { error: 'Membre du personnel non trouvé' }
+  try {
+    const data = await api.get<StaffMember>(`/staff-members/${id}`)
+    return { data, error: null }
+  } catch (err) {
+    console.error('Failed to get staff member:', err)
+    return { error: handleError(err) }
   }
-
-  return { data, error: null }
 }
 
 /**
@@ -147,36 +142,26 @@ export async function updateStaffMember(
     if (emailError) return { error: emailError }
   }
 
-  const { data: staff, error } = await supabase
-    .from('staff_members')
-    .update(data)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Failed to update staff member:', error)
-    return { error: 'Échec de la mise à jour du membre' }
+  try {
+    const staff = await api.put<StaffMember>(`/staff-members/${id}`, data)
+    return { data: staff, error: null }
+  } catch (err) {
+    console.error('Failed to update staff member:', err)
+    return { error: handleError(err) }
   }
-
-  return { data: staff, error: null }
 }
 
 /**
  * Delete a staff member
  */
 export async function deleteStaffMember(id: string): Promise<ServiceResult> {
-  const { error } = await supabase
-    .from('staff_members')
-    .delete()
-    .eq('id', id)
-
-  if (error) {
-    console.error('Failed to delete staff member:', error)
-    return { error: 'Échec de la suppression du membre' }
+  try {
+    await api.delete(`/staff-members/${id}`)
+    return { error: null }
+  } catch (err) {
+    console.error('Failed to delete staff member:', err)
+    return { error: handleError(err) }
   }
-
-  return { error: null }
 }
 
 /**
