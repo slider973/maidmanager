@@ -35,8 +35,9 @@ class InvoiceController extends Controller
             'notes' => ['nullable', 'string'],
             'lines' => ['nullable', 'array'],
             'lines.*.description' => ['required', 'string'],
-            'lines.*.quantity' => ['required', 'numeric', 'min:0'],
-            'lines.*.unit_price_cents' => ['required', 'integer', 'min:0'],
+            'lines.*.quantity' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.unit_price_cents' => ['nullable', 'integer', 'min:0'],
+            'lines.*.amount' => ['nullable', 'numeric', 'min:0'],
             'lines.*.schedule_entry_id' => ['nullable', 'exists:schedule_entries,id'],
             'lines.*.sort_order' => ['nullable', 'integer'],
         ]);
@@ -72,11 +73,14 @@ class InvoiceController extends Controller
 
             if (!empty($validated['lines'])) {
                 foreach ($validated['lines'] as $index => $lineData) {
-                    $lineTotalCents = (int) round($lineData['quantity'] * $lineData['unit_price_cents']);
+                    // Support both formats: quantity+unit_price_cents OR amount (in CHF)
+                    $quantity = $lineData['quantity'] ?? 1;
+                    $unitPriceCents = $lineData['unit_price_cents'] ?? (int) round(($lineData['amount'] ?? 0) * 100);
+                    $lineTotalCents = (int) round($quantity * $unitPriceCents);
                     $invoice->invoiceLines()->create([
                         'description' => $lineData['description'],
-                        'quantity' => $lineData['quantity'],
-                        'unit_price_cents' => $lineData['unit_price_cents'],
+                        'quantity' => $quantity,
+                        'unit_price_cents' => $unitPriceCents,
                         'total_cents' => $lineTotalCents,
                         'schedule_entry_id' => $lineData['schedule_entry_id'] ?? null,
                         'sort_order' => $lineData['sort_order'] ?? $index,

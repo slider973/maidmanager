@@ -75,6 +75,27 @@ class AuthController extends Controller
         return response()->json($request->user()->load('profile'));
     }
 
+    public function profile(Request $request): JsonResponse
+    {
+        $profile = $request->user()->profile;
+
+        if (!$profile) {
+            return response()->json([
+                'id' => null,
+                'staff_account_id' => null,
+                'staff_member_id' => null,
+            ]);
+        }
+
+        return response()->json([
+            'id' => $profile->id,
+            'staff_account_id' => $profile->staff_account_id,
+            'staff_member_id' => $profile->staff_account_id,
+            'display_name' => $profile->display_name,
+            'avatar_url' => $profile->avatar_url,
+        ]);
+    }
+
     public function forgotPassword(Request $request): JsonResponse
     {
         $request->validate([

@@ -20,16 +20,28 @@ class StaffPaymentController extends Controller
         return response()->json($query->get());
     }
 
+    private function normalizePaymentMethod(?string $method): ?string
+    {
+        $map = [
+            'Espèces' => 'cash',
+            'Virement' => 'transfer',
+            'Chèque' => 'check',
+        ];
+        return $map[$method] ?? $method;
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'staff_member_id' => ['required', 'exists:staff_members,id'],
             'amount_cents' => ['required', 'integer', 'min:1'],
             'payment_date' => ['required', 'date'],
-            'payment_method' => ['required', 'string', 'in:cash,transfer,check'],
+            'payment_method' => ['required', 'string', 'in:cash,transfer,check,Espèces,Virement,Chèque'],
             'reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
         ]);
+
+        $validated['payment_method'] = $this->normalizePaymentMethod($validated['payment_method']);
 
         $payment = StaffPayment::create([
             ...$validated,
@@ -58,7 +70,7 @@ class StaffPaymentController extends Controller
             'staff_member_id' => ['sometimes', 'required', 'exists:staff_members,id'],
             'amount_cents' => ['sometimes', 'required', 'integer', 'min:1'],
             'payment_date' => ['sometimes', 'required', 'date'],
-            'payment_method' => ['sometimes', 'required', 'string', 'in:cash,transfer,check'],
+            'payment_method' => ['sometimes', 'required', 'string', 'in:cash,transfer,check,Espèces,Virement,Chèque'],
             'reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
         ]);

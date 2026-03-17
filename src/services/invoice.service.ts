@@ -165,7 +165,7 @@ export async function updateInvoiceStatus(
   paymentDate?: string
 ): Promise<ServiceResult<Invoice>> {
   try {
-    const invoice = await api.put<Invoice>(`/invoices/${id}/status`, {
+    const invoice = await api.patch<Invoice>(`/invoices/${id}/status`, {
       status: newStatus,
       payment_date: paymentDate,
     })

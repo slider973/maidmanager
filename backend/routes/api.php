@@ -30,6 +30,7 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 // Authenticated routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
+    Route::get('/user/profile', [AuthController::class, 'profile']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::put('/user/password', [AuthController::class, 'updatePassword']);
 

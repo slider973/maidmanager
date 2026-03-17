@@ -177,7 +177,7 @@ export async function updateTaskStatus(
   status: TaskStatus
 ): Promise<ServiceResult> {
   try {
-    await api.put(`/tasks/${id}`, { status })
+    await api.patch(`/tasks/${id}/status`, { status })
     return { error: null }
   } catch (err) {
     console.error('Failed to update task status:', err)

@@ -135,7 +135,7 @@ export async function deleteOtherSessions(currentSessionId: string): Promise<{ e
  */
 export async function updateSessionActivity(sessionId: string): Promise<void> {
   try {
-    await api.put(`/sessions/${sessionId}/activity`)
+    await api.patch(`/sessions/${sessionId}/activity`, {})
   } catch {
     // Silently fail for activity updates
   }

@@ -27,9 +27,9 @@ class StaffBalanceController extends Controller
         return response()->json([
             'staff_member_id' => $staffMemberId,
             'staff_member' => $staffMember,
-            'total_earned_cents' => (int) $totalEarned,
+            'total_work_cents' => (int) $totalEarned,
             'total_paid_cents' => (int) $totalPaid,
-            'balance_cents' => (int) ($totalEarned - $totalPaid),
+            'total_balance_cents' => (int) ($totalEarned - $totalPaid),
         ]);
     }
 
@@ -51,9 +51,9 @@ class StaffBalanceController extends Controller
             return [
                 'staff_member_id' => $staffMember->id,
                 'staff_member' => $staffMember,
-                'total_earned_cents' => (int) $totalEarned,
+                'total_work_cents' => (int) $totalEarned,
                 'total_paid_cents' => (int) $totalPaid,
-                'balance_cents' => (int) ($totalEarned - $totalPaid),
+                'total_balance_cents' => (int) ($totalEarned - $totalPaid),
             ];
         });
 
@@ -68,10 +68,15 @@ class StaffBalanceController extends Controller
         $totalPaid = StaffPayment::where('user_id', $request->user()->id)
             ->sum('amount_cents');
 
+        $staffCount = StaffMember::where('user_id', $request->user()->id)
+            ->where('is_active', true)
+            ->count();
+
         return response()->json([
-            'total_earned_cents' => (int) $totalEarned,
+            'total_work_cents' => (int) $totalEarned,
             'total_paid_cents' => (int) $totalPaid,
-            'balance_cents' => (int) ($totalEarned - $totalPaid),
+            'total_balance_cents' => (int) ($totalEarned - $totalPaid),
+            'staff_count' => $staffCount,
         ]);
     }
 }

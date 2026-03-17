@@ -191,7 +191,7 @@ export async function updateScheduleStatus(
   status: ScheduleStatus
 ): Promise<ServiceResult> {
   try {
-    await api.put(`/schedule-entries/${id}`, { status })
+    await api.patch(`/schedule-entries/${id}/status`, { status })
     return { error: null }
   } catch (err) {
     console.error('Failed to update schedule status:', err)
