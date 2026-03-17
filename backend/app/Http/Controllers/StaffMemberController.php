@@ -8,6 +8,18 @@ use Illuminate\Http\Request;
 
 class StaffMemberController extends Controller
 {
+    /**
+     * Check if user owns this staff member OR is the linked staff account
+     */
+    private function canAccess(Request $request, StaffMember $staffMember): bool
+    {
+        if ($staffMember->user_id === $request->user()->id) {
+            return true;
+        }
+        $profile = $request->user()->profile;
+        return $profile && $profile->staff_account_id === $staffMember->id;
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = StaffMember::where('user_id', $request->user()->id)
@@ -44,7 +56,7 @@ class StaffMemberController extends Controller
 
     public function show(Request $request, StaffMember $staffMember): JsonResponse
     {
-        if ($staffMember->user_id !== $request->user()->id) {
+        if (!$this->canAccess($request, $staffMember)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

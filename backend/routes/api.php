@@ -70,11 +70,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Action Types
     Route::apiResource('action-types', ActionTypeController::class)->except(['show']);
 
-    // Time Entries
-    Route::apiResource('time-entries', TimeEntryController::class);
-    Route::patch('time-entries/{timeEntry}/clock-out', [TimeEntryController::class, 'clockOut']);
-    Route::get('time-entries/current/{staffMemberId}', [TimeEntryController::class, 'currentEntry']);
+    // Time Entries (custom routes BEFORE apiResource to avoid conflicts)
+    Route::get('time-entries/current/{staffMemberId?}', [TimeEntryController::class, 'currentEntry']);
+    Route::get('time-entries/missing', [TimeEntryController::class, 'missingEntries']);
     Route::get('time-entries-summary', [TimeEntryController::class, 'summary']);
+    Route::patch('time-entries/{timeEntry}/clock-out', [TimeEntryController::class, 'clockOut']);
+    Route::apiResource('time-entries', TimeEntryController::class);
 
     // Room Actions
     Route::get('room-actions', [RoomActionController::class, 'index']);

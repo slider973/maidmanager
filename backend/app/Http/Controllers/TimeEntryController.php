@@ -11,9 +11,37 @@ use Illuminate\Support\Carbon;
 
 class TimeEntryController extends Controller
 {
+    /**
+     * Get the staff member ID linked to current user's profile (if any)
+     */
+    private function getLinkedStaffMemberId(Request $request): ?int
+    {
+        $profile = $request->user()->profile;
+        return $profile?->staff_account_id;
+    }
+
+    private function canAccessEntry(Request $request, TimeEntry $entry): bool
+    {
+        if ($entry->user_id === $request->user()->id) return true;
+        $linkedId = $this->getLinkedStaffMemberId($request);
+        return $linkedId && $entry->staff_member_id === $linkedId;
+    }
+
+    /**
+     * Build query scoped to user's own data OR their linked staff member
+     */
+    private function scopedQuery(Request $request)
+    {
+        $linkedId = $this->getLinkedStaffMemberId($request);
+        if ($linkedId) {
+            return TimeEntry::where('staff_member_id', $linkedId);
+        }
+        return TimeEntry::where('user_id', $request->user()->id);
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $query = TimeEntry::where('user_id', $request->user()->id)
+        $query = $this->scopedQuery($request)
             ->with(['staffMember', 'client']);
 
         if ($request->has('staff_member_id')) {
@@ -43,9 +71,11 @@ class TimeEntryController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
+        // Use the staff member's owner (manager) as user_id
+        $staffMember = StaffMember::findOrFail($validated['staff_member_id']);
         $timeEntry = TimeEntry::create([
             ...$validated,
-            'user_id' => $request->user()->id,
+            'user_id' => $staffMember->user_id,
             'clock_in_at' => now(),
             'status' => 'open',
         ]);
@@ -55,7 +85,7 @@ class TimeEntryController extends Controller
 
     public function show(Request $request, TimeEntry $timeEntry): JsonResponse
     {
-        if ($timeEntry->user_id !== $request->user()->id) {
+        if (!$this->canAccessEntry($request, $timeEntry)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -64,7 +94,7 @@ class TimeEntryController extends Controller
 
     public function update(Request $request, TimeEntry $timeEntry): JsonResponse
     {
-        if ($timeEntry->user_id !== $request->user()->id) {
+        if (!$this->canAccessEntry($request, $timeEntry)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -85,7 +115,7 @@ class TimeEntryController extends Controller
 
     public function clockOut(Request $request, TimeEntry $timeEntry): JsonResponse
     {
-        if ($timeEntry->user_id !== $request->user()->id) {
+        if (!$this->canAccessEntry($request, $timeEntry)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
@@ -108,7 +138,7 @@ class TimeEntryController extends Controller
         $amountCents = (int) round($durationMinutes * $hourlyRate / 60);
 
         $workSession = WorkSession::create([
-            'user_id' => $request->user()->id,
+            'user_id' => $staffMember->user_id,
             'staff_member_id' => $timeEntry->staff_member_id,
             'session_date' => $timeEntry->clock_in_at->toDateString(),
             'duration_minutes' => $durationMinutes,
@@ -122,9 +152,11 @@ class TimeEntryController extends Controller
         return response()->json($timeEntry->load(['staffMember', 'client']));
     }
 
-    public function currentEntry(Request $request, int $staffMemberId): JsonResponse
+    public function currentEntry(Request $request, ?int $staffMemberId = null): JsonResponse
     {
-        $entry = TimeEntry::where('user_id', $request->user()->id)
+        $staffMemberId = $staffMemberId ?? $request->input('staff_member_id');
+
+        $entry = $this->scopedQuery($request)
             ->where('staff_member_id', $staffMemberId)
             ->where('status', 'open')
             ->with(['staffMember', 'client'])
@@ -137,9 +169,23 @@ class TimeEntryController extends Controller
         return response()->json($entry);
     }
 
+    public function missingEntries(Request $request): JsonResponse
+    {
+        $staffMemberId = $request->input('staff_member_id');
+
+        $entries = $this->scopedQuery($request)
+            ->where('staff_member_id', $staffMemberId)
+            ->where('status', 'open')
+            ->where('clock_in_at', '<', now()->startOfDay())
+            ->with(['staffMember', 'client'])
+            ->get();
+
+        return response()->json($entries);
+    }
+
     public function summary(Request $request): JsonResponse
     {
-        $query = TimeEntry::where('user_id', $request->user()->id);
+        $query = $this->scopedQuery($request);
 
         if ($request->has('staff_member_id')) {
             $query->where('staff_member_id', $request->input('staff_member_id'));

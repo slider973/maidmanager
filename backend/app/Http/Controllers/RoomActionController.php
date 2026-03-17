@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\RoomAction;
+use App\Models\StaffMember;
 use App\Models\TimeEntry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,14 +11,42 @@ use Illuminate\Support\Facades\DB;
 
 class RoomActionController extends Controller
 {
+    private function getLinkedStaffMemberId(Request $request): ?int
+    {
+        $profile = $request->user()->profile;
+        return $profile?->staff_account_id;
+    }
+
+    private function scopedTimeEntryQuery(Request $request)
+    {
+        $linkedId = $this->getLinkedStaffMemberId($request);
+        if ($linkedId) {
+            return TimeEntry::where('staff_member_id', $linkedId);
+        }
+        return TimeEntry::where('user_id', $request->user()->id);
+    }
+
     public function index(Request $request): JsonResponse
     {
+        // Support both time_entry_id and staff_member_id+date
+        if ($request->has('staff_member_id') && $request->has('date')) {
+            $timeEntryIds = $this->scopedTimeEntryQuery($request)
+                ->where('staff_member_id', $request->input('staff_member_id'))
+                ->whereDate('clock_in_at', $request->input('date'))
+                ->pluck('id');
+
+            $actions = RoomAction::whereIn('time_entry_id', $timeEntryIds)
+                ->with(['roomType', 'actionType'])
+                ->get();
+
+            return response()->json($actions);
+        }
+
         $request->validate([
             'time_entry_id' => ['required', 'integer'],
         ]);
 
-        // Verify the time entry belongs to the user
-        $timeEntry = TimeEntry::where('user_id', $request->user()->id)
+        $timeEntry = $this->scopedTimeEntryQuery($request)
             ->findOrFail($request->input('time_entry_id'));
 
         $actions = RoomAction::where('time_entry_id', $timeEntry->id)
@@ -36,8 +65,7 @@ class RoomActionController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
-        // Verify the time entry belongs to the user
-        TimeEntry::where('user_id', $request->user()->id)
+        $this->scopedTimeEntryQuery($request)
             ->findOrFail($validated['time_entry_id']);
 
         $roomAction = RoomAction::create([
@@ -50,8 +78,7 @@ class RoomActionController extends Controller
 
     public function destroy(Request $request, RoomAction $roomAction): JsonResponse
     {
-        // Verify ownership through time entry
-        TimeEntry::where('user_id', $request->user()->id)
+        $this->scopedTimeEntryQuery($request)
             ->findOrFail($roomAction->time_entry_id);
 
         $roomAction->delete();
@@ -59,9 +86,11 @@ class RoomActionController extends Controller
         return response()->json(['message' => 'Action supprimée']);
     }
 
-    public function todayActions(Request $request, int $staffMemberId): JsonResponse
+    public function todayActions(Request $request, ?int $staffMemberId = null): JsonResponse
     {
-        $timeEntryIds = TimeEntry::where('user_id', $request->user()->id)
+        $staffMemberId = $staffMemberId ?? $request->input('staff_member_id');
+
+        $timeEntryIds = $this->scopedTimeEntryQuery($request)
             ->where('staff_member_id', $staffMemberId)
             ->whereDate('clock_in_at', now()->toDateString())
             ->pluck('id');
@@ -75,8 +104,7 @@ class RoomActionController extends Controller
 
     public function summary(Request $request, int $timeEntryId): JsonResponse
     {
-        // Verify the time entry belongs to the user
-        TimeEntry::where('user_id', $request->user()->id)
+        $this->scopedTimeEntryQuery($request)
             ->findOrFail($timeEntryId);
 
         $summary = RoomAction::where('time_entry_id', $timeEntryId)

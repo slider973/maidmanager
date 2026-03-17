@@ -9,15 +9,31 @@ use Illuminate\Http\Request;
 
 class ClientRoomController extends Controller
 {
+    private function findAccessibleClient(Request $request, int $clientId): Client
+    {
+        // Try direct ownership first
+        $client = Client::where('user_id', $request->user()->id)->find($clientId);
+        if ($client) return $client;
+
+        // Staff can access clients of their manager
+        $profile = $request->user()->profile;
+        if ($profile?->staff_account_id) {
+            $staffMember = \App\Models\StaffMember::find($profile->staff_account_id);
+            if ($staffMember) {
+                $client = Client::where('user_id', $staffMember->user_id)->find($clientId);
+                if ($client) return $client;
+            }
+        }
+        abort(403, 'Forbidden');
+    }
+
     public function index(Request $request): JsonResponse
     {
         $request->validate([
             'client_id' => ['required', 'integer'],
         ]);
 
-        // Verify client belongs to user
-        Client::where('user_id', $request->user()->id)
-            ->findOrFail($request->input('client_id'));
+        $this->findAccessibleClient($request, $request->input('client_id'));
 
         $rooms = ClientRoom::where('client_id', $request->input('client_id'))
             ->with('roomType')
