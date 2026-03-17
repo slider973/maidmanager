@@ -115,5 +115,5 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Schedule Calendar
     Route::get('calendar/month', [ScheduleCalendarController::class, 'month']);
-    Route::get('calendar/staff-clients/{staffMemberId}', [ScheduleCalendarController::class, 'staffClients']);
+    Route::get('calendar/staff-clients/{staffMemberId?}', [ScheduleCalendarController::class, 'staffClients']);
 });

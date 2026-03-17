@@ -17,7 +17,17 @@ class ScheduleCalendarController extends Controller
         $startOfMonth = Carbon::create($year, $month, 1)->startOfMonth();
         $endOfMonth = Carbon::create($year, $month, 1)->endOfMonth();
 
-        $query = ScheduleEntry::where('user_id', $request->user()->id)
+        // Support staff accessing their own schedules
+        $profile = $request->user()->profile;
+        $linkedStaffId = $profile?->staff_account_id;
+        if ($linkedStaffId) {
+            $staffMember = \App\Models\StaffMember::findOrFail($linkedStaffId);
+            $userId = $staffMember->user_id;
+        } else {
+            $userId = $request->user()->id;
+        }
+
+        $query = ScheduleEntry::where('user_id', $userId)
             ->whereBetween('scheduled_date', [$startOfMonth, $endOfMonth])
             ->with(['staffMember', 'client']);
 
@@ -45,15 +55,28 @@ class ScheduleCalendarController extends Controller
         ]);
     }
 
-    public function staffClients(Request $request, int $staffMemberId): JsonResponse
+    public function staffClients(Request $request, ?int $staffMemberId = null): JsonResponse
     {
-        $clientIds = ScheduleEntry::where('user_id', $request->user()->id)
+        $staffMemberId = $staffMemberId ?? $request->input('staff_member_id');
+
+        // Support staff accessing their own data
+        $profile = $request->user()->profile;
+        $linkedStaffId = $profile?->staff_account_id;
+
+        if ($linkedStaffId) {
+            $staffMember = \App\Models\StaffMember::findOrFail($linkedStaffId);
+            $managerId = $staffMember->user_id;
+        } else {
+            $managerId = $request->user()->id;
+        }
+
+        $clientIds = ScheduleEntry::where('user_id', $managerId)
             ->where('staff_member_id', $staffMemberId)
             ->whereNotNull('client_id')
             ->distinct()
             ->pluck('client_id');
 
-        $clients = \App\Models\Client::where('user_id', $request->user()->id)
+        $clients = \App\Models\Client::where('user_id', $managerId)
             ->whereIn('id', $clientIds)
             ->get();
 
